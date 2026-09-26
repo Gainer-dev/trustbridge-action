@@ -20,6 +20,10 @@ export interface ActionOutputExtras {
      * `conflict_report` and `has_conflicts` outputs are set accordingly.
      */
     conflictReport?: ConflictReport | null;
+    /** #459 — Friendbot outputs */
+    friendbotCalled?: boolean;
+    friendbotSuccess?: boolean;
+    friendbotTransactionHash?: string;
 }
 /**
  * A single source that provided a value for a given field.
@@ -114,6 +118,9 @@ export interface ActionOutputs {
     actual_network_passphrase: string;
     assignee_results_json: string;
     matrix_ready_map: string;
+    friendbot_called: string;
+    friendbot_success: string;
+    friendbot_transaction_hash: string;
 }
 export declare function toActionOutputs(result: ValidationResult, commentUrl?: string, fullReportPath?: string, extras?: ActionOutputExtras): ActionOutputs;
 export declare function setValidationOutputs(result: ValidationResult, commentUrl?: string, fullReportPath?: string, extras?: ActionOutputExtras): void;

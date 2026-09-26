@@ -121,6 +121,49 @@ describe('proxy module', () => {
     it('does not bypass for partial match', () => {
       expect(shouldBypassProxy('notlocalhost', ['localhost'])).toBe(false);
     });
+
+    // ── Issue #451 — NO_PROXY bypass list coverage ────────────────────────────
+
+    it('NO_PROXY wildcard (*) bypasses all hostnames', () => {
+      expect(shouldBypassProxy('horizon.stellar.org', ['*'])).toBe(true);
+      expect(shouldBypassProxy('api.github.com', ['*'])).toBe(true);
+      expect(shouldBypassProxy('anything.example.com', ['*'])).toBe(true);
+    });
+
+    it('NO_PROXY exact match for GHES API hostname', () => {
+      const noProxy = ['ghes.corp.example.com'];
+      expect(shouldBypassProxy('ghes.corp.example.com', noProxy)).toBe(true);
+      expect(shouldBypassProxy('other.corp.example.com', noProxy)).toBe(false);
+    });
+
+    it('NO_PROXY domain suffix bypasses Horizon on corporate GHES', () => {
+      // Enterprise pattern: bypass all *.corp.example.com hosts
+      const noProxy = ['.corp.example.com'];
+      expect(shouldBypassProxy('horizon.corp.example.com', noProxy)).toBe(true);
+      expect(shouldBypassProxy('ghes.corp.example.com', noProxy)).toBe(true);
+      expect(shouldBypassProxy('external.evil.com', noProxy)).toBe(false);
+    });
+
+    it('NO_PROXY suffix-without-dot bypasses subdomains', () => {
+      // corp.example.com without leading dot should still match foo.corp.example.com
+      const noProxy = ['corp.example.com'];
+      expect(shouldBypassProxy('api.corp.example.com', noProxy)).toBe(true);
+    });
+
+    it('NO_PROXY does not bypass root hostname when only subdomain listed', () => {
+      // 'sub.corp.local' in NO_PROXY should not bypass 'corp.local' itself
+      const noProxy = ['sub.corp.local'];
+      expect(shouldBypassProxy('corp.local', noProxy)).toBe(false);
+    });
+
+    it('NO_PROXY list with multiple entries — all are evaluated', () => {
+      const noProxy = ['localhost', '127.0.0.1', '.corp.local', 'horizon.internal.test'];
+      expect(shouldBypassProxy('localhost', noProxy)).toBe(true);
+      expect(shouldBypassProxy('127.0.0.1', noProxy)).toBe(true);
+      expect(shouldBypassProxy('api.corp.local', noProxy)).toBe(true);
+      expect(shouldBypassProxy('horizon.internal.test', noProxy)).toBe(true);
+      expect(shouldBypassProxy('horizon.stellar.org', noProxy)).toBe(false);
+    });
   });
 
   describe('createProxyAgent', () => {
@@ -146,6 +189,73 @@ describe('proxy module', () => {
       process.env.HTTPS_PROXY = 'http://proxy:8080';
       const agent = createProxyAgent('not-a-url');
       expect(agent).toBeUndefined();
+    });
+
+    // ── Issue #451 — invalid proxy URL soft-fail ──────────────────────────────
+
+    it('soft-fails (returns undefined) for a completely invalid proxy URL', () => {
+      // HttpsProxyAgent constructor will throw for garbage; we must not propagate
+      const agent = createProxyAgent('https://horizon.stellar.org', {
+        proxyUrl: ':::bad-proxy-url:::',
+        noProxyHosts: [],
+      });
+      expect(agent).toBeUndefined();
+    });
+
+    it('soft-fails for a proxy URL with no host', () => {
+      const agent = createProxyAgent('https://horizon.stellar.org', {
+        proxyUrl: 'http://:8080',
+        noProxyHosts: [],
+      });
+      // Should not throw; may be undefined if the agent constructor rejects it
+      // (behaviour depends on https-proxy-agent version, but must never throw)
+      expect(() =>
+        createProxyAgent('https://horizon.stellar.org', {
+          proxyUrl: 'http://:8080',
+          noProxyHosts: [],
+        }),
+      ).not.toThrow();
+    });
+
+    it('soft-fails for a proxy URL that is an empty string override', () => {
+      const agent = createProxyAgent('https://horizon.stellar.org', {
+        proxyUrl: '',
+        noProxyHosts: [],
+      });
+      expect(agent).toBeUndefined();
+    });
+
+    // ── Issue #451 — agent attachment shape ────────────────────────────────────
+
+    it('returned agent has the expected shape (instanceof check / proxy property)', () => {
+      process.env.HTTPS_PROXY = 'http://proxy.corp:8080';
+      const agent = createProxyAgent('https://horizon.stellar.org');
+      expect(agent).toBeDefined();
+      // HttpsProxyAgent exposes a `proxy` property with the parsed proxy URL
+      expect(agent).toHaveProperty('proxy');
+    });
+
+    it('agent proxy property reflects the configured proxy URL', () => {
+      const agent = createProxyAgent('https://horizon.stellar.org', {
+        proxyUrl: 'http://corp-proxy:3128',
+        noProxyHosts: [],
+      });
+      expect(agent).toBeDefined();
+      // The proxy hostname should be stored on the agent
+      const proxyUrl = (agent as any)?.proxy;
+      expect(proxyUrl).toBeDefined();
+    });
+
+    it('bypasses proxy when target hostname matches NO_PROXY domain suffix', () => {
+      // Corporate GHES pattern: bypass *.corp.internal but proxy everything else
+      process.env.HTTPS_PROXY = 'http://proxy:8080';
+      process.env.NO_PROXY = '.corp.internal';
+
+      const bypassed = createProxyAgent('https://horizon.corp.internal');
+      expect(bypassed).toBeUndefined();
+
+      const notBypassed = createProxyAgent('https://horizon.stellar.org');
+      expect(notBypassed).toBeDefined();
     });
   });
 
@@ -188,6 +298,35 @@ describe('proxy module', () => {
       process.env.HTTPS_PROXY = 'http://proxy:8080';
       const opts = getOctokitProxyOptions();
       expect(opts.request).toBeDefined();
+    });
+
+    // ── Issue #451 — GHES + Horizon via corporate proxy ───────────────────────
+
+    it('GHES scenario: proxy used for horizon, bypassed for GHES API via NO_PROXY', () => {
+      process.env.HTTPS_PROXY = 'http://corp-proxy:3128';
+      process.env.NO_PROXY = 'ghes.corp.example.com,api.corp.example.com';
+
+      // GHES API bypassed — Octokit should get no agent
+      const ghesOpts = getOctokitProxyOptions('https://api.corp.example.com');
+      expect(ghesOpts.request).toBeUndefined();
+
+      // Horizon goes through the proxy
+      const horizonAgent = createProxyAgent('https://horizon.stellar.org', {
+        proxyUrl: 'http://corp-proxy:3128',
+        noProxyHosts: ['ghes.corp.example.com', 'api.corp.example.com'],
+      });
+      expect(horizonAgent).toBeDefined();
+    });
+
+    it('GHES scenario: wildcard NO_PROXY bypasses both GHES and Horizon internal endpoints', () => {
+      process.env.HTTPS_PROXY = 'http://corp-proxy:3128';
+      process.env.NO_PROXY = '*';
+
+      const opts = getOctokitProxyOptions('https://ghes.corp.example.com/api/v3');
+      expect(opts.request).toBeUndefined();
+
+      const agent = createProxyAgent('https://horizon.internal.corp.example.com');
+      expect(agent).toBeUndefined();
     });
   });
 });

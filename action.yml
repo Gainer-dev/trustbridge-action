@@ -363,7 +363,7 @@ inputs:
     required: false
     default: ""
 
-  comment_mode:
+  posting_mode:
     description: >-
       Controls whether TrustBridge posts an issue comment: "post" (default)
       writes/updates the sticky comment, "dry-run" builds the comment but does
@@ -371,6 +371,25 @@ inputs:
       Outputs are always set regardless of mode.
     required: false
     default: 'post'
+
+  use_friendbot:
+    description: >-
+      Automatically call Stellar Friendbot to fund unfunded (404) accounts on
+      supported test networks (testnet, futurenet). Refused on mainnet/public network.
+    required: false
+    default: "false"
+
+  friendbot_url:
+    description: >-
+      URL of the Stellar Friendbot endpoint. Must be on the allowlist (SSRF protection).
+      Defaults to https://friendbot.stellar.org.
+    required: false
+    default: "https://friendbot.stellar.org"
+
+  friendbot_timeout_ms:
+    description: "Timeout in milliseconds for Friendbot requests (1000-60000)"
+    required: false
+    default: "15000"
   fixture_mode:
     description: >-
       When true, load the Horizon account response from a local JSON file
@@ -781,6 +800,12 @@ outputs:
     description: 'JSON result for the validated assignee, when an assignee is available'
   matrix_ready_map:
     description: 'JSON map of assignee login to validation readiness'
+  friendbot_called:
+    description: 'Whether Friendbot was called to fund the testnet account (true/false)'
+  friendbot_success:
+    description: 'Whether Friendbot funding succeeded (true/false)'
+  friendbot_transaction_hash:
+    description: 'Transaction hash from successful Friendbot funding, if called'
 
 runs:
   using: "node20"

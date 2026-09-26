@@ -131,6 +131,10 @@ export function createProxyAgent(
   }
 
   try {
+    const parsedProxy = new URL(cfg.proxyUrl);
+    if (!parsedProxy.hostname || !['http:', 'https:'].includes(parsedProxy.protocol)) {
+      throw new Error(`Invalid proxy URL protocol or hostname: ${cfg.proxyUrl}`);
+    }
     const safeProxyUrl = redactProxyUrl(cfg.proxyUrl);
     logger.info('Creating proxy agent', {
       component: 'proxy',

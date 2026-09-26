@@ -1,4 +1,6 @@
 import { ValidationResult } from './checks';
+export type PostingMode = 'post' | 'dry-run' | 'off';
+export declare const VALID_POSTING_MODES: PostingMode[];
 /**
  * Options for `handleAutoUnassign` (Issue #228).
  */

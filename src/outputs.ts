@@ -32,6 +32,10 @@ export interface ActionOutputExtras {
    * `conflict_report` and `has_conflicts` outputs are set accordingly.
    */
   conflictReport?: ConflictReport | null;
+  /** #459 — Friendbot outputs */
+  friendbotCalled?: boolean;
+  friendbotSuccess?: boolean;
+  friendbotTransactionHash?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -202,6 +206,10 @@ export interface ActionOutputs {
   actual_network_passphrase: string;
   assignee_results_json: string;
   matrix_ready_map: string;
+  // #459 Friendbot outputs
+  friendbot_called: string;
+  friendbot_success: string;
+  friendbot_transaction_hash: string;
 }
 
 export function toActionOutputs(
@@ -285,6 +293,9 @@ export function toActionOutputs(
     actual_network_passphrase: mismatch?.actualPassphrase ?? '',
     assignee_results_json: assigneeResultsJson,
     matrix_ready_map: matrixReadyMap,
+    friendbot_called: String(Boolean(extras.friendbotCalled)),
+    friendbot_success: String(Boolean(extras.friendbotSuccess)),
+    friendbot_transaction_hash: extras.friendbotTransactionHash ?? '',
   };
 }
 
