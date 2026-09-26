@@ -203,6 +203,30 @@ outputs:
     description: 'URL of the created or updated issue comment, when run in an issue context'
     value: ${{ steps.run-trustbridge.outputs.comment_url }}
 
+  asset_balance:
+    description: 'Current configured asset (e.g. USDC) balance as reported by Horizon, or 0 / unknown'
+    value: ${{ steps.run-trustbridge.outputs.asset_balance }}
+
+  asset_balance_met:
+    description: 'true when min_asset_balance is not set or the balance meets or exceeds the floor'
+    value: ${{ steps.run-trustbridge.outputs.asset_balance_met }}
+
+  check_account_funded:
+    description: 'Named per-check output — mirrors account_funded'
+    value: ${{ steps.run-trustbridge.outputs.check_account_funded }}
+
+  check_trustline:
+    description: 'Named per-check output — mirrors trustline_exists'
+    value: ${{ steps.run-trustbridge.outputs.check_trustline }}
+
+  check_xlm_reserve:
+    description: 'Named per-check output — true if native XLM balance meets min_xlm_reserve'
+    value: ${{ steps.run-trustbridge.outputs.check_xlm_reserve }}
+
+  ready:
+    description: 'Whether all validation checks passed (true/false)'
+    value: ${{ steps.run-trustbridge.outputs.ready }}
+
 runs:
   using: 'composite'
   steps:
@@ -288,7 +312,7 @@ When you add one of the gate labels, wallet validation will run automatically on
     - name: Run TrustBridge (gate open)
       id: run-trustbridge
       if: steps.check-gate.outputs.gate_skipped != 'true'
-      uses: Stellar-TrustBridge/trustbridge-action@v1
+      uses: Stellar-TrustBridge/trustbridge-action@c0f10f03bcd5c13f25cd38eb7a57c6f3a1e4f3db # v1
       with:
         stellar_address_input: ${{ inputs.stellar_address_input }}
         github_token: ${{ inputs.github_token }}

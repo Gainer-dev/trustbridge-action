@@ -737,3 +737,123 @@ describe('Reusable workflow issue_number contract', () => {
     expect(content).toContain('github.event.pull_request.number || github.event.issue.number');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Issue #466 — Label-gate pass-through output contract
+//
+// Verifies that every declared pass-through output in the label-gate composite
+// action is wired to the correct trustbridge-action output step reference, and
+// that the gate-skipped guard outputs are always present.
+// ---------------------------------------------------------------------------
+
+describe('Label-gate pass-through output contract (#466)', () => {
+  const labelGatePath = path.join(
+    __dirname,
+    '../.github/actions/trustbridge-label-gate/action.yml',
+  );
+  const labelGateDesignPath = path.join(__dirname, '../docs/LABEL_GATE_DESIGN.md');
+
+  let actionContent: string;
+
+  beforeAll(() => {
+    actionContent = fs.readFileSync(labelGatePath, 'utf8');
+  });
+
+  // ── Gate control outputs ─────────────────────────────────────────────────
+
+  it('declares gate_skipped output wired to check-gate step', () => {
+    expect(actionContent).toContain('gate_skipped:');
+    expect(actionContent).toContain("${{ steps.check-gate.outputs.gate_skipped }}");
+  });
+
+  it('declares gate_label_found output wired to check-gate step', () => {
+    expect(actionContent).toContain('gate_label_found:');
+    expect(actionContent).toContain("${{ steps.check-gate.outputs.gate_label_found }}");
+  });
+
+  // ── Core TrustBridge pass-through outputs ────────────────────────────────
+
+  it('forwards account_funded from run-trustbridge step', () => {
+    expect(actionContent).toContain('account_funded:');
+    expect(actionContent).toContain("${{ steps.run-trustbridge.outputs.account_funded }}");
+  });
+
+  it('forwards trustline_exists from run-trustbridge step', () => {
+    expect(actionContent).toContain('trustline_exists:');
+    expect(actionContent).toContain("${{ steps.run-trustbridge.outputs.trustline_exists }}");
+  });
+
+  it('forwards xlm_balance from run-trustbridge step', () => {
+    expect(actionContent).toContain('xlm_balance:');
+    expect(actionContent).toContain("${{ steps.run-trustbridge.outputs.xlm_balance }}");
+  });
+
+  it('forwards comment_url from run-trustbridge step', () => {
+    expect(actionContent).toContain('comment_url:');
+    expect(actionContent).toContain("${{ steps.run-trustbridge.outputs.comment_url }}");
+  });
+
+  // ── Extended pass-through outputs (Issue #466) ───────────────────────────
+
+  it('forwards asset_balance from run-trustbridge step', () => {
+    expect(actionContent).toContain('asset_balance:');
+    expect(actionContent).toContain("${{ steps.run-trustbridge.outputs.asset_balance }}");
+  });
+
+  it('forwards asset_balance_met from run-trustbridge step', () => {
+    expect(actionContent).toContain('asset_balance_met:');
+    expect(actionContent).toContain("${{ steps.run-trustbridge.outputs.asset_balance_met }}");
+  });
+
+  it('forwards check_account_funded from run-trustbridge step', () => {
+    expect(actionContent).toContain('check_account_funded:');
+    expect(actionContent).toContain("${{ steps.run-trustbridge.outputs.check_account_funded }}");
+  });
+
+  it('forwards check_trustline from run-trustbridge step', () => {
+    expect(actionContent).toContain('check_trustline:');
+    expect(actionContent).toContain("${{ steps.run-trustbridge.outputs.check_trustline }}");
+  });
+
+  it('forwards check_xlm_reserve from run-trustbridge step', () => {
+    expect(actionContent).toContain('check_xlm_reserve:');
+    expect(actionContent).toContain("${{ steps.run-trustbridge.outputs.check_xlm_reserve }}");
+  });
+
+  it('forwards ready from run-trustbridge step', () => {
+    expect(actionContent).toContain('ready:');
+    expect(actionContent).toContain("${{ steps.run-trustbridge.outputs.ready }}");
+  });
+
+  // ── Design doc coverage ──────────────────────────────────────────────────
+
+  it('LABEL_GATE_DESIGN.md documents asset_balance pass-through', () => {
+    const designContent = fs.readFileSync(labelGateDesignPath, 'utf8');
+    expect(designContent).toContain('asset_balance');
+  });
+
+  it('LABEL_GATE_DESIGN.md documents check_account_funded pass-through', () => {
+    const designContent = fs.readFileSync(labelGateDesignPath, 'utf8');
+    expect(designContent).toContain('check_account_funded');
+  });
+
+  it('LABEL_GATE_DESIGN.md documents check_trustline pass-through', () => {
+    const designContent = fs.readFileSync(labelGateDesignPath, 'utf8');
+    expect(designContent).toContain('check_trustline');
+  });
+
+  it('LABEL_GATE_DESIGN.md documents check_xlm_reserve pass-through', () => {
+    const designContent = fs.readFileSync(labelGateDesignPath, 'utf8');
+    expect(designContent).toContain('check_xlm_reserve');
+  });
+
+  it('LABEL_GATE_DESIGN.md documents ready pass-through', () => {
+    const designContent = fs.readFileSync(labelGateDesignPath, 'utf8');
+    expect(designContent).toContain('ready');
+  });
+
+  it('LABEL_GATE_DESIGN.md advises checking gate_skipped before branching on outputs', () => {
+    const designContent = fs.readFileSync(labelGateDesignPath, 'utf8');
+    expect(designContent).toContain("gate_skipped != 'true'");
+  });
+});
