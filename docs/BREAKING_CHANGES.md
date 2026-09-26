@@ -232,7 +232,29 @@ Initial public release. No breaking changes from a prior major.
 
 ---
 
-## Webhook payload versioning policy (Issue #296)
+## Cache backend fallback behavior (Issue #462)
+
+When a `selectedBackend` value is provided to `SimpleCache` that is not one of the supported values (`"memory"`, `"github-actions"`), the cache **silently falls back to in-memory mode** and emits a `core.warning`. This is a non-breaking, non-fatal behavior: workflows continue to execute correctly using the in-memory cache.
+
+### Supported named backends
+
+| Value | Behavior |
+|-------|----------|
+| `"memory"` (default) | In-process heap cache only; no persistence across steps, jobs, or runs |
+| `"github-actions"` | Backed by `GitHubActionsCacheBackend`; equivalent to `useActionsCacheBackend: true` |
+
+Any other value is **unsupported**. A `core.warning` is emitted immediately with:
+- The unsupported value that was requested.
+- The list of supported values.
+- A message that in-memory fallback is active.
+
+This warning is visible in the GitHub Actions log without requiring `debug_mode: true`.
+
+### Change classification
+
+Adding this warning is a **non-breaking change** (new warning, same runtime behavior). No workflow file update is required. If you intentionally pass an unsupported `selectedBackend` value via a programmatic `SimpleCache` constructor (e.g. in a plugin), update it to one of the supported values to suppress the warning.
+
+---
 
 The signed webhook payload emitted by `src/webhook.ts` is a **public API surface** — dashboard receivers and downstream automation switch on its field names and types. Renames and removals are breaking changes even when the action's workflow-level inputs/outputs are otherwise untouched.
 

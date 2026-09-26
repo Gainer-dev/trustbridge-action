@@ -53,6 +53,8 @@ export const FAQ_ANCHORS = {
   HORIZON_ERROR: 'horizon-error',
   DEBUG_MODE: 'debug-mode',
   WEBHOOK_NOT_RECEIVED: 'webhook-not-received',
+  CLAIMABLE_BALANCE: 'claimable-balance',
+  UNAUTHORIZED_TRUSTLINE: 'unauthorized-trustline',
 } as const;
 
 export type FaqAnchor = (typeof FAQ_ANCHORS)[keyof typeof FAQ_ANCHORS];
@@ -63,10 +65,13 @@ export type FaqAnchor = (typeof FAQ_ANCHORS)[keyof typeof FAQ_ANCHORS];
  */
 const CHECK_TO_ANCHOR_MAP: Array<{ keyword: string; anchor: FaqAnchor }> = [
   { keyword: 'funded', anchor: FAQ_ANCHORS.ACCOUNT_NOT_FUNDED },
+  // 'unauthorized' must come before 'trustline' so the more specific match wins
+  { keyword: 'unauthorized', anchor: FAQ_ANCHORS.UNAUTHORIZED_TRUSTLINE },
   { keyword: 'trustline', anchor: FAQ_ANCHORS.TRUSTLINE_MISSING },
   { keyword: 'reserve', anchor: FAQ_ANCHORS.XLM_RESERVE_TOO_LOW },
   { keyword: 'xlm', anchor: FAQ_ANCHORS.XLM_RESERVE_TOO_LOW },
   { keyword: 'horizon', anchor: FAQ_ANCHORS.HORIZON_ERROR },
+  { keyword: 'claimable', anchor: FAQ_ANCHORS.CLAIMABLE_BALANCE },
 ];
 
 /**

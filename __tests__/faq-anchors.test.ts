@@ -86,7 +86,7 @@ describe('FAQ anchor existence in docs/FAQ.md (Issue #104, #328)', () => {
     });
   }
 
-  it('docs/FAQ.md contains all 7 expected anchors', () => {
+  it('docs/FAQ.md contains all 9 expected anchors', () => {
     const expected = [
       'account-not-funded',
       'trustline-missing',
@@ -95,6 +95,8 @@ describe('FAQ anchor existence in docs/FAQ.md (Issue #104, #328)', () => {
       'horizon-error',
       'debug-mode',
       'webhook-not-received',
+      'claimable-balance',
+      'unauthorized-trustline',
     ];
     for (const anchor of expected) {
       expect(anchorsInDoc.has(anchor)).toBe(true);
@@ -165,6 +167,22 @@ describe('getFaqAnchorForCheck', () => {
     expect(getFaqAnchorForCheck('Horizon availability')).toBe(FAQ_ANCHORS.HORIZON_ERROR);
   });
 
+  it('maps "claimable balance" to claimable-balance', () => {
+    expect(getFaqAnchorForCheck('claimable balance')).toBe(FAQ_ANCHORS.CLAIMABLE_BALANCE);
+  });
+
+  it('maps "Claimable Balance Policy" to claimable-balance', () => {
+    expect(getFaqAnchorForCheck('Claimable Balance Policy')).toBe(FAQ_ANCHORS.CLAIMABLE_BALANCE);
+  });
+
+  it('maps "unauthorized trustline" to unauthorized-trustline', () => {
+    expect(getFaqAnchorForCheck('unauthorized trustline')).toBe(FAQ_ANCHORS.UNAUTHORIZED_TRUSTLINE);
+  });
+
+  it('maps "Unauthorized Trustline Policy" to unauthorized-trustline', () => {
+    expect(getFaqAnchorForCheck('Unauthorized Trustline Policy')).toBe(FAQ_ANCHORS.UNAUTHORIZED_TRUSTLINE);
+  });
+
   it('is case-insensitive', () => {
     expect(getFaqAnchorForCheck('ACCOUNT FUNDED')).toBe(FAQ_ANCHORS.ACCOUNT_NOT_FUNDED);
     expect(getFaqAnchorForCheck('usdc trustline')).toBe(FAQ_ANCHORS.TRUSTLINE_MISSING);
@@ -190,6 +208,8 @@ describe('getFaqAnchorForCheck', () => {
       ['XLM reserve', FAQ_ANCHORS.XLM_RESERVE_TOO_LOW],
       ['XLM balance', FAQ_ANCHORS.XLM_RESERVE_TOO_LOW],
       ['Horizon availability', FAQ_ANCHORS.HORIZON_ERROR],
+      ['claimable balance', FAQ_ANCHORS.CLAIMABLE_BALANCE],
+      ['unauthorized trustline', FAQ_ANCHORS.UNAUTHORIZED_TRUSTLINE],
     ];
 
     for (const [label, expectedAnchor] of knownLabels) {

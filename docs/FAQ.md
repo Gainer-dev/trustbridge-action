@@ -156,6 +156,72 @@ When `debug_mode: true`:
 
 ---
 
+## Claimable balance shown instead of funded account {#claimable-balance}
+
+**Symptom:** A contributor's address holds a claimable balance but the `account_funded` check shows ❌, or the comment mentions claimable balances.
+
+**What this means:** A *claimable balance* is an escrowed amount of XLM or an asset that has been set aside for a specific recipient but has not yet been claimed. It is **not** the same as funding an account. Stellar accounts must be activated with at least 1 XLM sent directly to the account before they appear on the ledger and before trustlines can be created.
+
+Until the contributor claims the balance (which itself requires a small funded account to pay the fee), their G-address remains unfunded.
+
+**Steps to fix:**
+
+1. Obtain a small amount of XLM from an exchange or another funded account to activate the G-address directly.
+2. Once the account is active, claim the claimable balance using a SEP-0007-compatible wallet or Stellar Laboratory.
+3. Re-run the TrustBridge check — either by reassigning the issue or triggering a `workflow_dispatch`.
+
+**Workflow configuration note:** By default (`claimable_balance_policy: ignore`) claimable balances do not affect the funded check. Set `claimable_balance_policy: count` to surface an informational hint when unfunded accounts have pending claimable balances:
+
+```yaml
+with:
+  stellar_address_input: ${{ steps.address.outputs.address }}
+  github_token: ${{ secrets.GITHUB_TOKEN }}
+  claimable_balance_policy: count
+```
+
+**Helpful links:**
+- [Stellar docs: Claimable Balances](https://developers.stellar.org/docs/learn/encyclopedia/transactions-specialized/claimable-balances)
+- [Stellar Laboratory — Claim Claimable Balance](https://laboratory.stellar.org/#txbuilder?network=public)
+
+---
+
+## Unauthorized trustline {#unauthorized-trustline}
+
+**Symptom:** The trustline check shows ❌ with a message about an unauthorized or pending trustline, even though the contributor has added the asset to their wallet.
+
+**What this means:** A trustline can exist in one of two authorization states:
+- **Authorized** — the issuer has granted permission; the account can send and receive the asset.
+- **Unauthorized / Pending** — the trustline record exists on the ledger but the issuer has not yet granted authorization. This happens when the issuer account has the `AUTH_REQUIRED` flag set.
+
+TrustBridge distinguishes between a missing trustline and an unauthorized one. An unauthorized trustline means the contributor took the right steps (added the trustline) but the issuer still needs to authorize it.
+
+**Steps to fix:**
+
+1. Confirm with the project maintainer or asset issuer that your account has been authorized. Some assets require KYC or manual issuer review.
+2. If you control the issuer account (test/private assets), use the `Allow Trust` or `Set Trustline Flags` operation in Stellar Laboratory to authorize the trustline.
+3. Once authorized, re-run the TrustBridge check.
+
+**Workflow configuration note:** Use `unauthorized_trustline_policy` to control how TrustBridge responds:
+
+| Value | Behavior |
+|-------|----------|
+| `warn` (default) | Check passes, a warning annotation is emitted |
+| `fail` | Check fails; `trustline_exists` output is `false` |
+| `ignore` | Authorized and unauthorized trustlines are treated identically |
+
+```yaml
+with:
+  stellar_address_input: ${{ steps.address.outputs.address }}
+  github_token: ${{ secrets.GITHUB_TOKEN }}
+  unauthorized_trustline_policy: fail   # or warn / ignore
+```
+
+**Helpful links:**
+- [Stellar docs: Trustline Authorization](https://developers.stellar.org/docs/learn/encyclopedia/transactions-specialized/trustline-authorization)
+- [Stellar Laboratory — Set Trustline Flags](https://laboratory.stellar.org/#txbuilder?network=public)
+
+---
+
 ## Signed webhook not received {#webhook-not-received}
 
 **Symptom:** Your dashboard is not receiving TrustBridge webhook notifications.

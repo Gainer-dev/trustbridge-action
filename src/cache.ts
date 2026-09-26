@@ -21,12 +21,10 @@
  * reused across matrix legs and subsequent workflow runs (subject to TTL).
  */
 
-import * as actionsCache from '@actions/cache';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import * as crypto from 'crypto';
-import { logger } from './logger';
+import * as core from '@actions/core';
+
+/** Supported named backend identifiers for `CacheBackendOptions.selectedBackend`. */
+const SUPPORTED_NAMED_BACKENDS = new Set<string>(['memory', 'github-actions']);
 
 interface CacheEntry<T> {
   data: T;
@@ -52,6 +50,21 @@ export interface CacheBackendOptions {
    * When provided, overrides useActionsCacheBackend.
    */
   backend?: PersistentCacheBackend;
+
+  /**
+   * Named backend selector. Supported values: `"github-actions"` (persists via
+   * GitHub Actions cache API) and `"memory"` (in-memory only, default).
+   *
+   * Any other value is **not supported** and will be ignored with a warning.
+   * The cache will fall back to in-memory-only mode so the workflow does not
+   * break, but the selected backend will not be active.
+   *
+   * @example
+   * ```ts
+   * new SimpleCache({ selectedBackend: 'github-actions' })
+   * ```
+   */
+  selectedBackend?: string;
 }
 
 /**
@@ -225,6 +238,33 @@ export class SimpleCache {
   private useBackend: boolean = false;
 
   constructor(options: CacheBackendOptions = {}) {
+    // Warn when an unsupported named backend is requested so operators learn
+    // immediately instead of silently getting in-memory-only behaviour.
+    // Issue #462: unsupported backend values must not fail the workflow, but
+    // they must emit a clear warning so the misconfiguration is visible.
+    if (options.selectedBackend !== undefined && options.selectedBackend !== '') {
+      if (!SUPPORTED_NAMED_BACKENDS.has(options.selectedBackend)) {
+        try {
+          core.warning(
+            `[TrustBridge] cache: unsupported backend "${options.selectedBackend}" ` +
+              `was requested but is not recognised. ` +
+              `Supported values: ${[...SUPPORTED_NAMED_BACKENDS].map((b) => `"${b}"`).join(', ')}. ` +
+              `Falling back to in-memory cache. ` +
+              `Set selectedBackend to "github-actions" to enable GitHub Actions cache persistence, ` +
+              `or omit the option to use the default in-memory backend.`,
+          );
+        } catch {
+          // core.warning may throw outside GitHub Actions context (local dev / tests).
+          // Swallow so the cache is still usable.
+        }
+      }
+      // When selectedBackend is 'github-actions', honour it by treating it as
+      // equivalent to useActionsCacheBackend: true (unless a backend was already
+      // explicitly provided).
+      if (options.selectedBackend === 'github-actions' && !options.backend) {
+        options = { ...options, useActionsCacheBackend: true };
+      }
+    }
     this.useBackend = options.useActionsCacheBackend ?? false;
     this.backend = options.backend || (this.useBackend ? new GitHubActionsCacheBackend(options.cacheKeyPrefix) : undefined);
   }

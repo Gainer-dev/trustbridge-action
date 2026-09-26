@@ -26,6 +26,24 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"
           node -e "require('fs').readFileSync('action.yml','utf8')"
 
+  license-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run license policy gate
+        run: npm run license:check
+
   dist-drift:
     runs-on: ubuntu-latest
     steps:
