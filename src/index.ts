@@ -16,8 +16,9 @@ import {
   ValidationResult,
   rateBudgetExhaustedResult,
 } from './checks';
-import { fetchAccount, HorizonError, waitForFundedAccount, applyWalletLabels, applyReadyLabels } from './horizon';
+import { fetchAccount, HorizonError, waitForFundedAccount, applyWalletLabels, applyReadyLabels, callFriendbot } from './horizon';
 import type { HorizonAccount, HorizonBalance } from './horizon';
+import { SimpleCache } from './cache';
 import { checkLedgerFreshness } from './freshness';
 import {
   formatCommentBody,
@@ -78,6 +79,9 @@ import {
 import { buildSarifOutput, validateSarifSchema, serializeSarif } from './sarif';
 import { DiagnosticsConfig } from './diagnostics';
 import { traceActionRun, emitTraceSummary, clearTraceSpans } from './tracing';
+
+export type PostingMode = 'post' | 'dry-run' | 'off';
+export const VALID_POSTING_MODES: PostingMode[] = ['post', 'dry-run', 'off'];
 
 /**
  * Resolve the GitHub assignee login from the current Actions event payload.
@@ -584,6 +588,20 @@ async function run(): Promise<void> {
     },
   );
   const useCache = parseBooleanInput(core.getInput("use_cache"), false);
+  const useActionsCacheBackend = parseBooleanInput(
+    core.getInput("use_actions_cache_backend"),
+    false,
+  );
+  const useFriendbot = parseBooleanInput(core.getInput("use_friendbot"), false);
+  const friendbotUrl = core.getInput("friendbot_url") || "https://friendbot.stellar.org";
+  const friendbotTimeoutMs = parseNumberInput(
+    core.getInput("friendbot_timeout_ms"),
+    15000,
+    { min: 1000, max: 60000 },
+  );
+  let friendbotCalled = false;
+  let friendbotSuccess = false;
+  let friendbotTransactionHash = '';
   const allowCrossNetworkFallback = parseBooleanInput(
     core.getInput("allow_cross_network_fallback"),
     false,
@@ -694,18 +712,34 @@ async function run(): Promise<void> {
   );
   const clawbackStrictMode = parseBooleanInput(core.getInput('clawback_strict_mode'), false);
 
-  // Wave #30 — comment posting mode: post | dry-run | off
-  const VALID_COMMENT_MODES = new Set(["post", "dry-run", "off"]);
-  const commentModeRaw = (core.getInput("comment_mode") || "post")
-    .trim()
-    .toLowerCase();
-  if (!VALID_COMMENT_MODES.has(commentModeRaw)) {
+  // Issue #456 — split posting mode (post | dry-run | off) and comment_mode (threading)
+  const postingModeInput = core.getInput("posting_mode");
+  const commentModeInput = core.getInput("comment_mode");
+  let postingModeRaw = "post";
+  if (postingModeInput) {
+    postingModeRaw = postingModeInput.trim().toLowerCase();
+  } else if (
+    commentModeInput &&
+    (VALID_POSTING_MODES as readonly string[]).includes(commentModeInput.trim().toLowerCase())
+  ) {
+    // Backwards-compatibility fallback when comment_mode was used for posting
+    postingModeRaw = commentModeInput.trim().toLowerCase();
+  }
+
+  if (!(VALID_POSTING_MODES as readonly string[]).includes(postingModeRaw)) {
     throw new Error(
-      `Invalid comment_mode "${commentModeRaw}". Expected one of: post, dry-run, off.`,
+      `Invalid posting_mode "${postingModeRaw}". Expected one of: ${VALID_POSTING_MODES.join(', ')}.`,
     );
   }
-  const commentMode = commentModeRaw as "post" | "dry-run" | "off";
+  const commentMode = postingModeRaw as PostingMode;
   const shouldPostComment = commentMode === "post";
+
+  // Threading strategy for issue comments (#322 / #456)
+  const commentThreadingMode = (
+    commentModeInput && ['sticky', 'new', 'reply'].includes(commentModeInput.trim().toLowerCase())
+  )
+    ? (commentModeInput.trim().toLowerCase() as import('./comment').CommentMode)
+    : undefined;
 
   // Issue #304 — Offline fixture mode: load a recorded Horizon JSON snapshot
   // instead of calling live Horizon. No network call is made.
@@ -1256,7 +1290,7 @@ async function run(): Promise<void> {
     }
   }
 
-  let result;
+  let result: ValidationResult | undefined = undefined;
 
   const rateBudgetTracker = new RateBudgetTracker(horizonMaxRequests);
 
@@ -1268,6 +1302,13 @@ async function run(): Promise<void> {
     successThreshold: 2,
   });
 
+  const customCache = (useCache || useActionsCacheBackend)
+    ? new SimpleCache({
+        useActionsCacheBackend,
+        cacheKeyPrefix: 'trustbridge',
+      })
+    : undefined;
+
   const horizonOptions = {
     timeoutMs: horizonTimeoutMs,
     maxRetries,
@@ -1275,8 +1316,9 @@ async function run(): Promise<void> {
     retryMaxDelayMs,
     horizonUrlFallback: horizonUrlFallback || undefined,
     fallbackUrls,
-    cacheTtlMs: useCache ? horizonCacheTtlMs : 0,
-    useCache,
+    cacheTtlMs: (useCache || useActionsCacheBackend) ? horizonCacheTtlMs : 0,
+    useCache: useCache || useActionsCacheBackend,
+    cache: customCache,
     allowCrossNetworkFallback,
     rateBudgetTracker,
     horizonMaxRequests,
@@ -1346,45 +1388,86 @@ async function run(): Promise<void> {
     horizonFetchLatencyMs = Date.now() - horizonFetchStartMs;
     globalMetrics.stopTimer("horizon_fetch");
     if (error instanceof HorizonError && error.statusCode === 404) {
-      horizonFetchStatusCode = 404;
-      horizonFetchError = error.message;
-      // #144/#266: deterministic cross-network detection — probes canonical opposite
-      // with SSRF guard, 5s timeout; does not probe arbitrary fallback URLs.
-      const mismatchHint = await detectNetworkMismatch(
-        horizonUrl,
-        stellarAddress,
-      ).catch(() => undefined);
-      if (mismatchHint) {
-        core.warning(
-          `Cross-network mismatch detected: address is active on ${mismatchHint.activeOnNetwork} ` +
-            `but horizon_url points at ${mismatchHint.configuredNetwork}.`,
+      if (useFriendbot) {
+        logger.info('Account 404 encountered and use_friendbot enabled — calling Friendbot', {
+          component: 'index',
+          stellarAddress: effectiveResolvedAddress,
+          friendbotUrl,
+        });
+        friendbotCalled = true;
+        const fbResult = await callFriendbot(
+          effectiveResolvedAddress,
+          {
+            friendbotUrl,
+            timeoutMs: friendbotTimeoutMs,
+          },
+          horizonUrl,
         );
-      }
-      // #260: claimable-balance-aware funded definition — when policy is 'count',
-      // fetch claimable_balances (bounded 5s, no throw). Default 'ignore' skips request.
-      let claimableCount: number | undefined;
-      if (claimableBalancePolicy === "count") {
-        try {
-          const { fetchClaimableBalanceCount } = await import("./horizon");
-          claimableCount = await fetchClaimableBalanceCount(
-            horizonUrl,
-            stellarAddress,
-          );
-          if (claimableCount > 0) {
-            core.info(
-              `Found ${claimableCount} claimable balance(s) for ${stellarAddress} (policy=count).`,
-            );
+        friendbotSuccess = fbResult.success;
+        friendbotTransactionHash = fbResult.transactionHash ?? '';
+        if (fbResult.success) {
+          logger.info('Friendbot funding succeeded — re-fetching account', {
+            component: 'index',
+            transactionHash: fbResult.transactionHash,
+          });
+          try {
+            account = await fetchAccount(horizonUrl, effectiveResolvedAddress, horizonOptions);
+            horizonFetchStatusCode = 200;
+            result = await runAccountChecks(account, checkConfig);
+          } catch (refetchErr) {
+            logger.warn('Failed to re-fetch account after Friendbot funding', {
+              component: 'index',
+              error: refetchErr instanceof Error ? refetchErr.message : String(refetchErr),
+            });
           }
-        } catch {
-          claimableCount = 0;
+        } else {
+          logger.warn(`Friendbot funding failed: ${fbResult.message}`, {
+            component: 'index',
+          });
         }
       }
-      result = unfundedAccountResult(
-        stellarAddress,
-        checkConfig,
-        mismatchHint,
-        claimableCount,
-      );
+
+      if (!account) {
+        horizonFetchStatusCode = 404;
+        horizonFetchError = error.message;
+        // #144/#266: deterministic cross-network detection — probes canonical opposite
+        // with SSRF guard, 5s timeout; does not probe arbitrary fallback URLs.
+        const mismatchHint = await detectNetworkMismatch(
+          horizonUrl,
+          stellarAddress,
+        ).catch(() => undefined);
+        if (mismatchHint) {
+          core.warning(
+            `Cross-network mismatch detected: address is active on ${mismatchHint.activeOnNetwork} ` +
+              `but horizon_url points at ${mismatchHint.configuredNetwork}.`,
+          );
+        }
+        // #260: claimable-balance-aware funded definition — when policy is 'count',
+        // fetch claimable_balances (bounded 5s, no throw). Default 'ignore' skips request.
+        let claimableCount: number | undefined;
+        if (claimableBalancePolicy === "count") {
+          try {
+            const { fetchClaimableBalanceCount } = await import("./horizon");
+            claimableCount = await fetchClaimableBalanceCount(
+              horizonUrl,
+              stellarAddress,
+            );
+            if (claimableCount > 0) {
+              core.info(
+                `Found ${claimableCount} claimable balance(s) for ${stellarAddress} (policy=count).`,
+              );
+            }
+          } catch {
+            claimableCount = 0;
+          }
+        }
+        result = unfundedAccountResult(
+          stellarAddress,
+          checkConfig,
+          mismatchHint,
+          claimableCount,
+        );
+      }
     } else if (error instanceof HorizonError) {
       horizonFetchStatusCode = error.statusCode;
       horizonFetchError = error.message;
@@ -1732,6 +1815,7 @@ async function run(): Promise<void> {
       // without a second findStickyComment round-trip.
       commentUrl = await postIssueComment(githubToken, baselineBody, {
         sticky: stickyComment,
+        commentMode: commentThreadingMode,
         forceComment,
         snoozeWindowMs,
         bodyFactory: buildCommentBody,
@@ -1753,7 +1837,15 @@ async function run(): Promise<void> {
     }
   }
 
-  setValidationOutputs(result, commentUrl, fullReportPath, { validatedAt });
+  setValidationOutputs(result, commentUrl, fullReportPath, {
+    validatedAt,
+    friendbotCalled,
+    friendbotSuccess,
+    friendbotTransactionHash,
+  });
+  core.setOutput("friendbot_called", String(friendbotCalled));
+  core.setOutput("friendbot_success", String(friendbotSuccess));
+  core.setOutput("friendbot_transaction_hash", friendbotTransactionHash);
 
   // ---------------------------------------------------------------------------
   // Wallet labels (Issue #200)

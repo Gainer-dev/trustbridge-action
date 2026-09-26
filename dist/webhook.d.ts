@@ -99,6 +99,13 @@ export interface WebhookDeliveryResult {
  */
 export declare function computeWebhookSignature(body: string, secret: string): string;
 /**
+ * Verify a webhook signature using a constant-time comparison.
+ *
+ * Receivers should pass the raw request body so verification covers the exact
+ * bytes that were signed rather than a re-serialised JSON representation.
+ */
+export declare function verifyWebhookSignature(body: string, signature: string, secret: string): boolean;
+/**
  * Build a sanitised webhook payload from a `ValidationResult`.
  *
  * All sensitive values (stellar address) are redacted using the same policy

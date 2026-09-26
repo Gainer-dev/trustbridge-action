@@ -974,7 +974,7 @@ export async function fetchAccount(
         cacheEntryCountBefore: cacheStatsBefore.entries.length,
       }));
 
-      const cached = cache.get<HorizonAccount>(cacheKey);
+      const cached = (await cache.restoreAsync<HorizonAccount>(cacheKey)) ?? cache.get<HorizonAccount>(cacheKey);
       if (cached) {
         logger.debug('Horizon cache hit', safeHorizonContext({
           component: 'horizon',
@@ -1251,48 +1251,48 @@ export interface FriendbotOptions {
 
 const DEFAULT_FRIENDBOT_TIMEOUT_MS = 15_000;
 
-/** Allowlist of known-safe friendbot endpoints. */
-const FRIENDBOT_ALLOWLIST = [
-  'https://friendbot.stellar.org',
-  'https://horizon-testnet.stellar.org/friendbot',
-  'friendbot-testnet.stellar.org', // Domain-only variant
-];
+const ALLOWED_FRIENDBOT_HOSTS = new Set([
+  'friendbot.stellar.org',
+  'friendbot-testnet.stellar.org',
+  'horizon-testnet.stellar.org',
+  'friendbot-futurenet.stellar.org',
+  'horizon-futurenet.stellar.org',
+]);
 
 /**
  * Check if a friendbot URL is on the allowlist and safe to use.
  * Prevents SSRF attacks by only allowing known testnet friendbot endpoints.
  */
 export function isFriendbotAllowed(friendbotUrl: string): boolean {
-  const normalized = friendbotUrl.toLowerCase().trim();
-  
-  // Check exact match
-  if (FRIENDBOT_ALLOWLIST.includes(normalized)) {
-    return true;
-  }
-  
-  // Check domain match (with or without https://)
-  for (const allowed of FRIENDBOT_ALLOWLIST) {
-    if (normalized === allowed || normalized === `https://${allowed}`) {
-      return true;
-    }
-  }
-  
-  // Check if it's a subdomain path
-  try {
-    const url = new URL(normalized.startsWith('http') ? normalized : `https://${normalized}`);
-    const allowedDomains = FRIENDBOT_ALLOWLIST.map(a => a.replace(/^https?:\/\//, ''));
-    
-    for (const domain of allowedDomains) {
-      if (url.hostname === domain || url.hostname.endsWith(`.${domain}`)) {
-        return true;
-      }
-    }
-  } catch {
-    // Invalid URL, not allowed
+  if (!friendbotUrl || !friendbotUrl.trim()) {
     return false;
   }
-  
-  return false;
+  const raw = friendbotUrl.trim();
+  if (raw.includes('..')) {
+    return false;
+  }
+  try {
+    const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw);
+    const url = new URL(hasScheme ? raw : `https://${raw}`);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      return false;
+    }
+    // Disallow non-HTTPS when explicit scheme provided, except allow normalization
+    if (hasScheme && url.protocol !== 'https:') {
+      return false;
+    }
+    const hostname = url.hostname.toLowerCase();
+    if (!ALLOWED_FRIENDBOT_HOSTS.has(hostname)) {
+      return false;
+    }
+    const pathname = url.pathname.replace(/\/+$/, '');
+    if (pathname !== '' && pathname !== '/friendbot') {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -1300,8 +1300,17 @@ export function isFriendbotAllowed(friendbotUrl: string): boolean {
  * Used to enforce friendbot safety rules (never call friendbot on mainnet).
  */
 export function isTestnetHorizon(horizonUrl: string): boolean {
-  const normalized = horizonUrl.toLowerCase();
-  return normalized.includes('testnet') || normalized.includes('test');
+  const normalized = horizonUrl.toLowerCase().trim();
+  if (normalized.includes('public.stellar.org') || normalized.includes('mainnet')) {
+    return false;
+  }
+  try {
+    const url = new URL(normalized.startsWith('http') ? normalized : `https://${normalized}`);
+    if (url.hostname === 'horizon.stellar.org') {
+      return false;
+    }
+  } catch {}
+  return normalized.includes('testnet') || normalized.includes('test') || normalized.includes('futurenet');
 }
 
 export interface FriendbotResult {
@@ -1393,7 +1402,10 @@ export async function callFriendbot(
   } catch (error) {
     clearTimeout(timer);
     
-    if (error instanceof Error && error.name === 'AbortError') {
+    if (
+      (error instanceof Error && (error.name === 'AbortError' || error.message.includes('AbortError') || error.name === 'TimeoutError')) ||
+      (error as any)?.name === 'AbortError'
+    ) {
       return {
         success: false,
         message: `Friendbot request timed out after ${timeoutMs}ms`,

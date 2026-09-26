@@ -49,3 +49,31 @@ TrustBridge validates inputs before calling Horizon so failures stay clear and c
 - **`trustbridge_config_path`**: Can point to `.github/trustbridge.yml`. Supports repository-level overrides of organization-level policies (`.github/trustbridge.yml`).
 - **Dashboard Roster (#317)**: Configured via `dashboard_roster_url`, `dashboard_roster_secret`, and `dashboard_roster_timeout_ms`. Pulls assignee roster dynamically via HTTP GET. The request URL is validated against SSRF blocklist rules and requests include `X-TrustBridge-Signature` (HMAC-SHA256) and `X-TrustBridge-Timestamp` headers when `dashboard_roster_secret` is configured. Expects a JSON dictionary response mapping GitHub logins to Stellar G-addresses (`{ "login": "G..." }`).
 - **Soroban Roster (#318)**: Configured via `contract_id`, `soroban_full_roster`, and `soroban_roster_page_limit`. Normal single-address resolution looks up the contract page containing the assignee. Setting `soroban_full_roster: "true"` retrieves the complete roster page-by-page from the contract state, bounded by `soroban_roster_page_limit`.
+
+## Comment & Posting Modes (#456)
+
+TrustBridge separates the comment threading behavior from the overall comment posting strategy:
+
+- **`comment_mode`**: Controls how comments are placed on issues or pull requests. Allowed values:
+  - `sticky` (default): Edits/updates the existing TrustBridge bot comment in-place.
+  - `new`: Posts a new standalone comment on each run.
+  - `reply`: Posts as a reply or new comment without replacing earlier comments.
+- **`posting_mode`**: Controls whether comments are posted to GitHub. Allowed values:
+  - `post` (default): Post or update comments via GitHub API.
+  - `dry-run`: Generate comment markdown and populate outputs, but skip calling GitHub API (useful for PRs from forks or read-only runs).
+  - `off`: Disable comment generation and posting entirely.
+
+For backwards compatibility, if `posting_mode` is omitted, the action falls back to checking `comment_mode` if it was set to `post`, `dry-run`, or `off`.
+
+## Friendbot Funding for Test Networks (#459)
+
+- **`use_friendbot`**: When `true`, automatically invokes Stellar Friendbot to fund new accounts on testnet/futurenet when Horizon returns a 404 (not found). Blocked on mainnet.
+- **`friendbot_url`**: Custom Friendbot endpoint (defaults to `https://friendbot.stellar.org`). Validated against an SSRF allowlist (`friendbot.stellar.org`, `friendbot-futurenet.stellar.org`, `horizon-testnet.stellar.org/friendbot`, `friendbot-testnet.stellar.org`).
+- **`friendbot_timeout_ms`**: Friendbot request timeout in milliseconds (default: `15000`).
+
+## Cache Backend Selection (#461)
+
+- **`use_cache`**: Enables runner in-memory cache for Horizon account checks.
+- **`use_actions_cache_backend`**: Opts into the persistent GitHub Actions Cache Service backend (`@actions/cache`) to reuse check results across matrix legs and workflow runs. Falls back gracefully to runner memory cache if cache operations encounter service issues.
+- **`horizon_cache_ttl_ms`**: Time-to-live for cached account data in milliseconds (default: `60000`).
+

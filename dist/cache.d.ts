@@ -62,13 +62,17 @@ export interface PersistentCacheBackend {
 }
 /**
  * GitHub Actions cache backend implementation.
- * Uses the @actions/cache module to store data in GitHub Actions cache backend.
+ * Uses the @actions/cache module to store and retrieve check-result data in the
+ * GitHub Actions cache backend across matrix jobs and workflow runs.
  */
 export declare class GitHubActionsCacheBackend implements PersistentCacheBackend {
     private cacheKeyPrefix;
-    private static initialized;
-    private cache;
+    private cacheDir;
+    private memCache;
     constructor(cacheKeyPrefix?: string);
+    private hashKey;
+    private getFilePath;
+    private getActionsCacheKey;
     getCache(key: string): Promise<string | null>;
     saveCache(key: string, value: string, ttlMs: number): Promise<void>;
     restoreCache(key: string): Promise<boolean>;

@@ -21,6 +21,13 @@
  * reused across matrix legs and subsequent workflow runs (subject to TTL).
  */
 
+import * as actionsCache from '@actions/cache';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import * as crypto from 'crypto';
+import { logger } from './logger';
+
 interface CacheEntry<T> {
   data: T;
   expiresAt: number;
@@ -75,49 +82,140 @@ export interface PersistentCacheBackend {
 
 /**
  * GitHub Actions cache backend implementation.
- * Uses the @actions/cache module to store data in GitHub Actions cache backend.
+ * Uses the @actions/cache module to store and retrieve check-result data in the
+ * GitHub Actions cache backend across matrix jobs and workflow runs.
  */
 export class GitHubActionsCacheBackend implements PersistentCacheBackend {
-  private static initialized = false;
-  private cache: Map<string, { data: string; expiresAt: number }> = new Map();
+  private cacheDir: string;
+  private memCache: Map<string, { data: string; expiresAt: number }> = new Map();
 
   constructor(private cacheKeyPrefix: string = 'trustbridge') {
-    // Note: @actions/cache would be imported here in production.
-    // For now, this is a stub that uses in-memory storage.
+    this.cacheDir = path.join(os.tmpdir(), 'trustbridge-actions-cache');
+    try {
+      if (!fs.existsSync(this.cacheDir)) {
+        fs.mkdirSync(this.cacheDir, { recursive: true });
+      }
+    } catch {
+      // Ignore directory creation failure (will use memory cache)
+    }
+  }
+
+  private hashKey(key: string): string {
+    return crypto.createHash('sha256').update(key).digest('hex').slice(0, 24);
+  }
+
+  private getFilePath(key: string): string {
+    return path.join(this.cacheDir, `${this.hashKey(key)}.json`);
+  }
+
+  private getActionsCacheKey(key: string): string {
+    return `${this.cacheKeyPrefix}-check-${this.hashKey(key)}`;
   }
 
   async getCache(key: string): Promise<string | null> {
-    const prefixedKey = `${this.cacheKeyPrefix}:${key}`;
-    const entry = this.cache.get(prefixedKey);
-
-    if (!entry) {
-      return null;
+    const mem = this.memCache.get(key);
+    if (mem) {
+      if (Date.now() > mem.expiresAt) {
+        this.memCache.delete(key);
+        return null;
+      }
+      return mem.data;
     }
 
-    if (Date.now() > entry.expiresAt) {
-      this.cache.delete(prefixedKey);
-      return null;
+    const filePath = this.getFilePath(key);
+    if (fs.existsSync(filePath)) {
+      try {
+        const raw = fs.readFileSync(filePath, 'utf8');
+        const parsed = JSON.parse(raw) as { data: string; expiresAt: number };
+        if (Date.now() <= parsed.expiresAt) {
+          this.memCache.set(key, parsed);
+          return parsed.data;
+        } else {
+          try {
+            fs.unlinkSync(filePath);
+          } catch {}
+          return null;
+        }
+      } catch {
+        // Fall through to Actions cache restore on corrupted file
+      }
     }
 
-    return entry.data;
+    try {
+      if (
+        actionsCache &&
+        typeof actionsCache.isFeatureAvailable === 'function' &&
+        actionsCache.isFeatureAvailable()
+      ) {
+        const actionsKey = this.getActionsCacheKey(key);
+        const hitKey = await actionsCache.restoreCache([filePath], actionsKey);
+        if (hitKey && fs.existsSync(filePath)) {
+          const raw = fs.readFileSync(filePath, 'utf8');
+          const parsed = JSON.parse(raw) as { data: string; expiresAt: number };
+          if (Date.now() <= parsed.expiresAt) {
+            this.memCache.set(key, parsed);
+            return parsed.data;
+          }
+        }
+      }
+    } catch (err) {
+      logger.debug('Failed to restore from GitHub Actions cache', {
+        component: 'cache',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    return null;
   }
 
   async saveCache(key: string, value: string, ttlMs: number): Promise<void> {
-    const prefixedKey = `${this.cacheKeyPrefix}:${key}`;
-    this.cache.set(prefixedKey, {
-      data: value,
-      expiresAt: Date.now() + ttlMs,
-    });
+    const expiresAt = Date.now() + ttlMs;
+    this.memCache.set(key, { data: value, expiresAt });
+
+    const filePath = this.getFilePath(key);
+    try {
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify({ key, data: value, expiresAt }),
+        'utf8',
+      );
+    } catch (err) {
+      logger.debug('Failed to write local cache entry file', {
+        component: 'cache',
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return;
+    }
+
+    try {
+      if (
+        actionsCache &&
+        typeof actionsCache.isFeatureAvailable === 'function' &&
+        actionsCache.isFeatureAvailable()
+      ) {
+        const actionsKey = this.getActionsCacheKey(key);
+        await actionsCache.saveCache([filePath], actionsKey);
+      }
+    } catch (err) {
+      logger.debug('Failed to save to GitHub Actions cache backend', {
+        component: 'cache',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   async restoreCache(key: string): Promise<boolean> {
-    const prefixedKey = `${this.cacheKeyPrefix}:${key}`;
-    const entry = this.cache.get(prefixedKey);
-    return entry !== undefined && Date.now() <= entry.expiresAt;
+    const val = await this.getCache(key);
+    return val !== null;
   }
 
   async dispose(): Promise<void> {
-    this.cache.clear();
+    this.memCache.clear();
+    try {
+      if (fs.existsSync(this.cacheDir)) {
+        fs.rmSync(this.cacheDir, { recursive: true, force: true });
+      }
+    } catch {}
   }
 }
 

@@ -343,11 +343,29 @@
       "default": "",
       "enum": ["", "testnet", "testnet-usdc", "public", "mainnet"]
     },
-    "comment_mode": {
+    "posting_mode": {
       "type": "string",
       "description": "Comment posting mode: post, dry-run, or off.",
       "default": "post",
       "enum": ["post", "dry-run", "off"]
+    },
+    "use_friendbot": {
+      "type": "string",
+      "description": "Automatically call Stellar Friendbot to fund unfunded (404) accounts on supported test networks.",
+      "enum": ["true", "false"],
+      "default": "false"
+    },
+    "friendbot_url": {
+      "type": "string",
+      "description": "URL of the Stellar Friendbot endpoint. Must be on the allowlist.",
+      "format": "uri",
+      "default": "https://friendbot.stellar.org"
+    },
+    "friendbot_timeout_ms": {
+      "type": "string",
+      "description": "Timeout in milliseconds for Friendbot requests (1000-60000).",
+      "pattern": "^[0-9]+$",
+      "default": "15000"
     },
     "dashboard_webhook_url": {
       "type": "string",
