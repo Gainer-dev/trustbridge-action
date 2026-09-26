@@ -5,13 +5,17 @@
   "description": "JSON Schema for trustbridge-action inputs. Mirrors action.yml. Use this schema to validate .trustbridge.yml config files or CI policy checks before runtime. See docs/SCHEMA.md for usage guidance.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["github_token"],
+  "required": [
+    "github_token"
+  ],
   "properties": {
     "github_token": {
       "type": "string",
       "description": "GitHub token used to post issue comments. Requires `issues: write` permission.",
       "minLength": 1,
-      "examples": ["${{ secrets.GITHUB_TOKEN }}"]
+      "examples": [
+        "${{ secrets.GITHUB_TOKEN }}"
+      ]
     },
     "github_app_token": {
       "type": "string",
@@ -22,7 +26,9 @@
       "type": "string",
       "description": "Stellar account address (G-address, 56 characters) to validate. Required unless assignee_address_map is set.",
       "pattern": "^G[A-Z2-7]{55}$",
-      "examples": ["GABC...XYZ"]
+      "examples": [
+        "GABC...XYZ"
+      ]
     },
     "assignee_address_map": {
       "type": "string",
@@ -46,7 +52,9 @@
       "format": "uri",
       "pattern": "^(https://|$)",
       "default": "",
-      "examples": ["https://horizon-testnet.stellar.org"]
+      "examples": [
+        "https://horizon-testnet.stellar.org"
+      ]
     },
     "rpc_fallback_url": {
       "type": "string",
@@ -60,21 +68,31 @@
       "maxLength": 12,
       "pattern": "^[A-Za-z0-9]{1,12}$",
       "default": "USDC",
-      "examples": ["USDC", "EURC", "yXLM"]
+      "examples": [
+        "USDC",
+        "EURC",
+        "yXLM"
+      ]
     },
     "asset_issuer": {
       "type": "string",
       "description": "Issuer address for the asset. Must be a Stellar G-address (classic issuer) or C-address (Soroban contract). Strictly validated against StrKey policy.",
       "pattern": "^[GC][A-Z2-7]{55}$",
       "default": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-      "examples": ["GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"]
+      "examples": [
+        "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+      ]
     },
     "min_xlm_reserve": {
       "type": "string",
       "description": "Minimum native XLM balance required. Applied as a floor over the Stellar protocol minimum.",
       "pattern": "^[0-9]+(\\.[0-9]+)?$",
       "default": "1.5",
-      "examples": ["1.5", "2", "5.0"]
+      "examples": [
+        "1.5",
+        "2",
+        "5.0"
+      ]
     },
     "min_trustline_limit": {
       "type": "string",
@@ -84,14 +102,16 @@
     },
     "min_asset_balance": {
       "type": "string",
-      "description": "Minimum balance required for the configured asset. Leave empty to skip this check.",
-      "pattern": "^([0-9]+(\\.[0-9]+)?)?$",
+      "description": "Minimum balance required for the configured asset.",
       "default": ""
     },
     "fail_on_missing": {
       "type": "string",
       "description": "When true, fails the workflow step on check failures. When false, emits a warning only.",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "true"
     },
     "preflight_only": {
@@ -106,7 +126,10 @@
     "debug_mode": {
       "type": "string",
       "description": "Enable extra action logs and append an expert diagnostics block to the issue comment for troubleshooting.",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "false"
     },
     "horizon_timeout_ms": {
@@ -118,29 +141,38 @@
     "sticky_comment": {
       "type": "string",
       "description": "Update TrustBridge's previous issue comment instead of posting a new one each run.",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "true"
     },
     "comment_mode": {
       "type": "string",
-      "description": "Comment threading strategy. One of: sticky (default), new, reply. When set, takes precedence over sticky_comment.",
+      "description": "Comment posting mode: post, dry-run, or off.",
+      "default": "post",
       "enum": [
-        "sticky",
-        "new",
-        "reply"
-      ],
-      "default": "sticky"
+        "post",
+        "dry-run",
+        "off"
+      ]
     },
     "onboarding_checklist": {
       "type": "string",
       "description": "Include an onboarding checklist in the issue comment.",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "true"
     },
     "wait_until_funded": {
       "type": "string",
       "description": "Poll Horizon until the account becomes funded instead of failing on the first 404.",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "false"
     },
     "wait_until_funded_timeout_ms": {
@@ -164,19 +196,28 @@
     "use_cache": {
       "type": "string",
       "description": "Cache successful Horizon account responses in job memory.",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "false"
     },
     "allow_cross_network_fallback": {
       "type": "string",
       "description": "Allow the fallback URL to resolve to a different Stellar network than the primary. Off by default.",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "false"
     },
     "log_inputs": {
       "type": "string",
       "description": "Emit a redacted JSON log record of all resolved action inputs at run start.",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "false"
     },
     "trustbridge_config_path": {
@@ -192,7 +233,10 @@
     "milestone_fail_on_skip": {
       "type": "string",
       "description": "Fail the workflow when the milestone gate skips validation.",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "false"
     },
     "assets_json": {
@@ -203,7 +247,10 @@
     "sep0007_deep_links": {
       "type": "string",
       "description": "Emit SEP-0007 wallet deep links (web+stellar:pay) in the issue comment.",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "false"
     },
     "sep0007_origin_domain": {
@@ -214,7 +261,10 @@
     "auto_wallet_labels": {
       "type": "string",
       "description": "Automatically apply a wallet state label to the issue after each check run.",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "false"
     },
     "pass_label": {
@@ -260,7 +310,10 @@
     "force_comment": {
       "type": "string",
       "description": "Bypass snooze logic and force an immediate comment post.",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "false"
     },
     "webhook_url": {
@@ -269,13 +322,17 @@
       "format": "uri",
       "pattern": "^(https://|$)",
       "default": "",
-      "examples": ["https://dashboard.example.com/trustbridge-webhook"]
+      "examples": [
+        "https://dashboard.example.com/trustbridge-webhook"
+      ]
     },
     "webhook_secret": {
       "type": "string",
       "description": "Shared HMAC-SHA256 secret for signing webhook payloads. Included as X-TrustBridge-Signature header. Never logged. Only used when webhook_url is set.",
       "default": "",
-      "examples": ["${{ secrets.TRUSTBRIDGE_WEBHOOK_SECRET }}"]
+      "examples": [
+        "${{ secrets.TRUSTBRIDGE_WEBHOOK_SECRET }}"
+      ]
     },
     "webhook_timeout_ms": {
       "type": "string",
@@ -285,13 +342,12 @@
     },
     "webhook_auth_mode": {
       "type": "string",
-      "description": "Authentication mechanism for dashboard webhook notifications: hmac or oidc.",
-      "enum": ["hmac", "oidc"],
+      "description": "Authentication mechanism for dashboard webhook notifications.",
       "default": "hmac"
     },
     "webhook_oidc_audience": {
       "type": "string",
-      "description": "Expected audience for GitHub OIDC token when webhook_auth_mode is oidc.",
+      "description": "Expected audience for GitHub OIDC token.",
       "default": "trustbridge-dashboard"
     },
     "network_passphrase": {
@@ -306,7 +362,10 @@
     "check_ledger_freshness": {
       "type": "string",
       "description": "Enable ledger freshness guard \u2014 warns or fails when Horizon is serving stale data.",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "false"
     },
     "max_ledger_lag_seconds": {
@@ -318,7 +377,10 @@
     "ledger_freshness_fail_on_stale": {
       "type": "string",
       "description": "Hard-fail when Horizon is stale. Default is warn-only.",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "false"
     },
     "docs_base_url": {
@@ -335,19 +397,24 @@
       "type": "string",
       "description": "Stellar network shorthand: testnet, public, or mainnet. Overrides horizon_url, asset_code, and asset_issuer defaults via campaign preset. (Issue #207)",
       "default": "",
-      "enum": ["", "testnet", "public", "mainnet"]
+      "enum": [
+        "",
+        "testnet",
+        "public",
+        "mainnet"
+      ]
     },
     "preset": {
       "type": "string",
       "description": "Campaign preset name (testnet, public, testnet-usdc, mainnet). Overrides network input and provides horizon_url, asset_code, asset_issuer defaults. (Issue #207)",
       "default": "",
-      "enum": ["", "testnet", "testnet-usdc", "public", "mainnet"]
-    },
-    "comment_mode": {
-      "type": "string",
-      "description": "Comment posting mode: post, dry-run, or off.",
-      "default": "post",
-      "enum": ["post", "dry-run", "off"]
+      "enum": [
+        "",
+        "testnet",
+        "testnet-usdc",
+        "public",
+        "mainnet"
+      ]
     },
     "dashboard_webhook_url": {
       "type": "string",
@@ -362,18 +429,16 @@
     "stellar_toml_fetch_enabled": {
       "type": "string",
       "description": "Enable optional SEP-0001 stellar.toml fetch and validation.",
-      "enum": ["true", "false"],
       "default": "false"
     },
     "stellar_toml_cache_ttl_ms": {
       "type": "string",
-      "description": "TTL in milliseconds for cached stellar.toml lookups.",
-      "pattern": "^[0-9]+$",
+      "description": "Time-to-live for stellar.toml fetch cache in milliseconds.",
       "default": "3600000"
     },
     "stellar_toml_hash_pin": {
       "type": "string",
-      "description": "Optional integrity hash for stellar.toml validation, format algorithm:hexvalue.",
+      "description": "Optional integrity hash for stellar.toml content validation.",
       "default": ""
     },
     "expected_home_domain": {
@@ -389,7 +454,11 @@
     "locale": {
       "type": "string",
       "description": "Language for issue comments. Supported: en, es, pt. Invalid falls back to en.",
-      "enum": ["en", "es", "pt"],
+      "enum": [
+        "en",
+        "es",
+        "pt"
+      ],
       "default": "en"
     },
     "stellar_addresses": {
@@ -400,13 +469,19 @@
     "use_actions_cache_backend": {
       "type": "string",
       "description": "Enable GitHub Actions cache backend persistence (true/false) to share cached Horizon responses across matrix legs.",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "false"
     },
     "write_validation_json": {
       "type": "string",
       "description": "When true, write the validation result to validation_json_path as a machine-readable JSON artifact.",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "false"
     },
     "validation_json_path": {
@@ -427,87 +502,20 @@
     "use_plugin_runner": {
       "type": "string",
       "description": "Use the plugin-based check pipeline instead of the monolith runAccountChecks.",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "false"
     },
     "unassign_on_not_ready": {
       "type": "string",
       "description": "Automatically unassign the GitHub assignee(s) when readiness checks fail (ready is false). Defaults to false (opt-in).",
-      "enum": ["true", "false"],
+      "enum": [
+        "true",
+        "false"
+      ],
       "default": "false"
-    },
-    "project_id": {
-      "type": "string",
-      "description": "Optional GitHub Projects v2 ID (node ID) to update item status when validation passes or fails.",
-      "default": ""
-    },
-    "project_status_field": {
-      "type": "string",
-      "description": "Name of the status field in the GitHub Projects v2 board.",
-      "default": "Status"
-    },
-    "project_status_pass": {
-      "type": "string",
-      "description": "Value/option to set on the project status field when validation passes.",
-      "default": ""
-    },
-    "project_status_fail": {
-      "type": "string",
-      "description": "Value/option to set on the project status field when validation fails.",
-      "default": ""
-    },
-    "project_token": {
-      "type": "string",
-      "description": "Optional GitHub token with project or write:org scope to use for Projects v2 updates.",
-      "default": ""
-    },
-    "claimable_balance_policy": {
-      "type": "string",
-      "description": "How to treat claimable balances when determining funded status: ignore (default) or count (surface claimable hint, extra Horizon request only when count).",
-      "enum": ["ignore", "count"],
-      "default": "ignore"
-    },
-    "sep0010_challenge_xdr": {
-      "type": "string",
-      "description": "Optional base64 XDR of a SEP-0010 challenge transaction to display in the comment (truncated, does not block ready).",
-      "default": ""
-    },
-    "sep0010_dashboard_url": {
-      "type": "string",
-      "description": "Optional HTTPS dashboard URL where Freighter SEP-0010 proof can be verified (preferred over raw XDR, does not block ready).",
-      "format": "uri",
-      "pattern": "^(https://|$)",
-      "default": ""
-    },
-    "min_asset_balance": {
-      "type": "string",
-      "description": "Minimum balance required for the configured asset.",
-      "default": ""
-    },
-    "webhook_auth_mode": {
-      "type": "string",
-      "description": "Authentication mechanism for dashboard webhook notifications.",
-      "default": "hmac"
-    },
-    "webhook_oidc_audience": {
-      "type": "string",
-      "description": "Expected audience for GitHub OIDC token.",
-      "default": "trustbridge-dashboard"
-    },
-    "stellar_toml_fetch_enabled": {
-      "type": "string",
-      "description": "Enable optional SEP-0001 stellar.toml fetch and validation.",
-      "default": "false"
-    },
-    "stellar_toml_cache_ttl_ms": {
-      "type": "string",
-      "description": "Time-to-live for stellar.toml fetch cache in milliseconds.",
-      "default": "3600000"
-    },
-    "stellar_toml_hash_pin": {
-      "type": "string",
-      "description": "Optional integrity hash for stellar.toml content validation.",
-      "default": ""
     },
     "project_id": {
       "type": "string",
@@ -532,6 +540,27 @@
     "project_token": {
       "type": "string",
       "description": "Optional GitHub token for projects.",
+      "default": ""
+    },
+    "claimable_balance_policy": {
+      "type": "string",
+      "description": "How to treat claimable balances when determining funded status: ignore (default) or count (surface claimable hint, extra Horizon request only when count).",
+      "enum": [
+        "ignore",
+        "count"
+      ],
+      "default": "ignore"
+    },
+    "sep0010_challenge_xdr": {
+      "type": "string",
+      "description": "Optional base64 XDR of a SEP-0010 challenge transaction to display in the comment (truncated, does not block ready).",
+      "default": ""
+    },
+    "sep0010_dashboard_url": {
+      "type": "string",
+      "description": "Optional HTTPS dashboard URL where Freighter SEP-0010 proof can be verified (preferred over raw XDR, does not block ready).",
+      "format": "uri",
+      "pattern": "^(https://|$)",
       "default": ""
     },
     "horizon_url_allowlist": {
@@ -563,6 +592,88 @@
       "type": "string",
       "description": "Maximum number of pages to fetch when soroban_full_roster is true",
       "default": "10"
+    },
+    "issue_number": {
+      "type": "string",
+      "description": "Explicit issue or pull request number to comment on. Leave empty to resolve from the GitHub event context.",
+      "default": "",
+      "pattern": "^([0-9]+)?$"
+    },
+    "fixture_mode": {
+      "type": "string",
+      "description": "When true, load the Horizon account response from a local JSON fixture file instead of calling the live Horizon API. Default false.",
+      "enum": [
+        "true",
+        "false"
+      ],
+      "default": "false"
+    },
+    "fixture_path": {
+      "type": "string",
+      "description": "Path to a Horizon account JSON fixture file (relative to repository root). Only used when fixture_mode is true.",
+      "default": ""
+    },
+    "clawback_strict_mode": {
+      "type": "string",
+      "description": "When true, fail validation if the configured asset has clawback enabled. Default false.",
+      "enum": [
+        "true",
+        "false"
+      ],
+      "default": "false"
+    },
+    "unauthorized_trustline_policy": {
+      "type": "string",
+      "description": "How to treat a trustline that exists but is not yet authorized by the issuer: warn (default), fail, or ignore.",
+      "enum": [
+        "warn",
+        "fail",
+        "ignore"
+      ],
+      "default": "warn"
+    },
+    "skip_for_maintainers": {
+      "type": "string",
+      "description": "Opt-in skip of validation checks when the workflow actor is a maintainer. Default false.",
+      "enum": [
+        "true",
+        "false"
+      ],
+      "default": "false"
+    },
+    "skip_if_maintainer": {
+      "type": "string",
+      "description": "Alias for skip_for_maintainers. Opt-in skip when actor is a maintainer. Default false.",
+      "enum": [
+        "true",
+        "false"
+      ],
+      "default": "false"
+    },
+    "maintainers_allowlist": {
+      "type": "string",
+      "description": "Optional comma-separated list of GitHub usernames or teams to treat as maintainers when skip_for_maintainers is true.",
+      "default": ""
+    },
+    "horizon_pin_fingerprint": {
+      "type": "string",
+      "description": "Optional TLS certificate fingerprint (SHA-256, colon-separated hex) to pin the Horizon endpoint certificate against. Default empty (pinning disabled).",
+      "default": "",
+      "pattern": "^([0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2})*)?$"
+    },
+    "federation_resolution_enabled": {
+      "type": "string",
+      "description": "Enable optional federation (user*domain) address resolution via HTTPS stellar.toml federation protocol. Default false.",
+      "enum": [
+        "true",
+        "false"
+      ],
+      "default": "false"
+    },
+    "custom_comment_template_path": {
+      "type": "string",
+      "description": "Optional workspace-relative path to a Markdown partial file appended to the TrustBridge issue comment. Supports {{variable}} interpolation. Leave empty to disable.",
+      "default": ""
     }
   }
 }

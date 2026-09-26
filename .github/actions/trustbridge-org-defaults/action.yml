@@ -269,7 +269,7 @@ runs:
 
     - name: Run TrustBridge with org defaults
       id: run-trustbridge
-      uses: Stellar-TrustBridge/trustbridge-action@v1
+      uses: Stellar-TrustBridge/trustbridge-action@c0f10f03bcd5c13f25cd38eb7a57c6f3a1e4f3db # v1
       with:
         github_token: ${{ inputs.github_token }}
         stellar_address_input: ${{ inputs.stellar_address_input }}

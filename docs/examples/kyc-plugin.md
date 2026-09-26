@@ -179,10 +179,10 @@ jobs:
       issues: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: '20'
 
@@ -190,7 +190,7 @@ jobs:
         run: npm ci
 
       - name: Run TrustBridge + KYC check
-        uses: Stellar-TrustBridge/trustbridge-action@v1
+        uses: Stellar-TrustBridge/trustbridge-action@c0f10f03bcd5c13f25cd38eb7a57c6f3a1e4f3db # v1
         with:
           stellar_address_input: ${{ steps.addr.outputs.value }}
           github_token: ${{ secrets.GITHUB_TOKEN }}

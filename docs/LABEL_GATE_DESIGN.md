@@ -63,7 +63,22 @@ Define a composite action at `.github/actions/trustbridge-label-gate/action.yml`
 3. **Outputs**:
    - `gate_skipped`: `'true'` if the gate was skipped, `'false'` otherwise.
    - `gate_label_found`: Name of the first gate label that was found (or empty if gate was skipped).
-   - All TrustBridge action outputs (forwarded only when gate is open).
+   - All TrustBridge action outputs (forwarded only when gate is open):
+     - `account_funded` / `check_account_funded` — whether the account exists on the Stellar network.
+     - `trustline_exists` / `check_trustline` — whether the configured asset trustline exists.
+     - `xlm_balance` — native XLM balance string from Horizon.
+     - `check_xlm_reserve` — `true` if XLM balance meets `min_xlm_reserve`.
+     - `asset_balance` — configured asset (e.g. USDC) balance or `0` / `unknown`.
+     - `asset_balance_met` — `true` when `min_asset_balance` is unset or the balance meets the floor.
+     - `comment_url` — URL of the created or updated issue comment.
+     - `ready` — `true` when all validation checks passed.
+
+   When the gate is **skipped** all TrustBridge pass-through outputs are empty
+   strings. Always check `gate_skipped` before branching on them:
+
+   ```yaml
+   if: steps.gate.outputs.gate_skipped != 'true' && steps.gate.outputs.account_funded == 'true'
+   ```
 
 ---
 

@@ -87,7 +87,7 @@ jobs:
     steps:
       - name: TrustBridge validation (silent — no comment)
         id: validate
-        uses: Stellar-TrustBridge/trustbridge-action@v1
+        uses: Stellar-TrustBridge/trustbridge-action@c0f10f03bcd5c13f25cd38eb7a57c6f3a1e4f3db # v1
         with:
           stellar_address_input: ${{ matrix.issue.address }}
           github_token: ${{ secrets.TRUSTBRIDGE_TOKEN || secrets.GITHUB_TOKEN }}
@@ -114,7 +114,7 @@ jobs:
           EOF
 
       - name: Upload result
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@6f51ac969184d9511dc3cfe33c2ac95cf5a6fa4e # v4.6.2
         with:
           name: digest-result-${{ matrix.issue.number }}
           path: /tmp/digest-results/${{ matrix.issue.number }}.json
@@ -128,7 +128,7 @@ jobs:
     if: always() && needs.collect-issues.outputs.matrix != '[]'
     steps:
       - name: Download all result artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444306234f5f33616fb76a15 # v4.3.0
         with:
           pattern: digest-result-*
           path: /tmp/digest-results
