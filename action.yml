@@ -224,7 +224,11 @@ inputs:
       fine-grained PAT or a GitHub App token with the Issues (read and write)
       permission. For `discussion` events, the comment is posted via GraphQL
       and requires `discussions: write` instead of `issues: write` (Issue
-      #221). Omit or leave empty when running in a context where comment
+      #221). On `discussion_comment` events the comment is posted as a reply
+      in the triggering comment's thread (under its top-level comment when
+      the trigger is itself a reply, since Discussions allow one reply
+      level), and the sticky comment is tracked per thread; `discussion`
+      events post a top-level comment (Issue #472). Omit or leave empty when running in a context where comment
       posting is not required (outputs are still set).
     required: true
   github_app_token:

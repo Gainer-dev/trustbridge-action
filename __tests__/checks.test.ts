@@ -21,6 +21,8 @@ import {
   horizonFailureResult,
   tlsFailureResult,
   buildAssetBalanceRequirement,
+  toStroops,
+  formatStroops,
   STELLAR_BASE_RESERVE_XLM,
   STELLAR_MIN_ACCOUNT_BALANCE_XLM,
 } from '../src/checks';
@@ -660,6 +662,91 @@ describe('buildAssetBalanceRequirement', () => {
       missing: '0.0000000',
       met: true,
     });
+  });
+});
+
+describe('min_asset_balance stroop precision (Issue #476)', () => {
+  function accountWithUsdc(balance: string) {
+    return makeAccount({
+      balances: [
+        { balance: '10.0000000', asset_type: 'native', buying_liabilities: '0.0000000', selling_liabilities: '0.0000000' },
+        {
+          balance, asset_type: 'credit_alphanum4', asset_code: 'USDC', asset_issuer: USDC_ISSUER,
+          buying_liabilities: '0.0000000', selling_liabilities: '0.0000000',
+        },
+      ],
+    });
+  }
+
+  describe('toStroops', () => {
+    it.each([
+      ['0', 0n],
+      ['1', 10_000_000n],
+      ['1.5', 15_000_000n],
+      ['14.9999700', 149_999_700n],
+      ['0.0000001', 1n],
+      [' 25.25 ', 252_500_000n],
+      ['.5', 5_000_000n],
+      ['922337203685.4775807', 9_223_372_036_854_775_807n],
+    ])('converts %p to %p stroops', (input, expected) => {
+      expect(toStroops(input)).toBe(expected);
+    });
+
+    it('accepts numbers, including exponent notation', () => {
+      expect(toStroops(50)).toBe(500_000_000n);
+      expect(toStroops(1e-7)).toBe(1n);
+    });
+
+    it('drops digits beyond 7 decimals by default and rounds up with ceil', () => {
+      expect(toStroops('1.00000001')).toBe(10_000_000n);
+      expect(toStroops('1.00000001', 'ceil')).toBe(10_000_001n);
+      expect(toStroops('1.00000000', 'ceil')).toBe(10_000_000n);
+      expect(toStroops('1e-8', 'ceil')).toBe(1n);
+    });
+
+    it('returns 0n for unparseable values', () => {
+      expect(toStroops('')).toBe(0n);
+      expect(toStroops('abc')).toBe(0n);
+      expect(toStroops('.')).toBe(0n);
+    });
+  });
+
+  it('formatStroops renders 7 decimal places', () => {
+    expect(formatStroops(0n)).toBe('0.0000000');
+    expect(formatStroops(1n)).toBe('0.0000001');
+    expect(formatStroops(9_223_372_036_854_775_807n)).toBe('922337203685.4775807');
+  });
+
+  it('passes when the balance is exactly the threshold', async () => {
+    const result = await runAccountChecks(accountWithUsdc('100.0000000'), { ...defaultConfig, minAssetBalance: '100' });
+    expect(result.assetBalanceMet).toBe(true);
+  });
+
+  it('fails one stroop below the threshold and reports a one-stroop deficit', async () => {
+    const result = await runAccountChecks(accountWithUsdc('99.9999999'), { ...defaultConfig, minAssetBalance: '100' });
+    expect(result.assetBalanceMet).toBe(false);
+    expect(result.checks[3].detail).toMatch(/Deficit: \*\*0\.0000001 USDC\*\*/);
+  });
+
+  it('passes one stroop above the threshold', async () => {
+    const result = await runAccountChecks(accountWithUsdc('100.0000001'), { ...defaultConfig, minAssetBalance: '100' });
+    expect(result.assetBalanceMet).toBe(true);
+  });
+
+  it('distinguishes one stroop at amounts beyond float precision', async () => {
+    const config = { ...defaultConfig, minAssetBalance: '922337203685.4775807' };
+    const below = await runAccountChecks(accountWithUsdc('922337203685.4775806'), config);
+    const equal = await runAccountChecks(accountWithUsdc('922337203685.4775807'), config);
+
+    expect(below.assetBalanceMet).toBe(false);
+    expect(below.checks[3].detail).toMatch(/Deficit: \*\*0\.0000001 USDC\*\*/);
+    expect(equal.assetBalanceMet).toBe(true);
+  });
+
+  it('rounds sub-stroop thresholds up to the next stroop', async () => {
+    const config = { ...defaultConfig, minAssetBalance: '1.00000001' };
+    expect((await runAccountChecks(accountWithUsdc('1.0000000'), config)).assetBalanceMet).toBe(false);
+    expect((await runAccountChecks(accountWithUsdc('1.0000001'), config)).assetBalanceMet).toBe(true);
   });
 });
 
