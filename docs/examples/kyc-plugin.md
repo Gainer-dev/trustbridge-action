@@ -1,7 +1,7 @@
 # KYC plugin - hardened reference example
 
 > **This is consumer logic, not a built-in check.**
-> TrustBridge's three core checks (account funded, trustline, XLM reserve)
+> TrustBridge's core checks (account funded, trustline, XLM reserve, SEP-0001 home domain)
 > always run via `runAccountChecks`. The KYC plugin is an optional extension
 > you register only when your program requires identity verification before
 > payout. KYC is never enforced by default.
@@ -261,7 +261,7 @@ npm test -- --testPathPattern kyc-plugin-example
 - It does not implement a real KYC provider integration (`myKycProvider` is a stub).
 - It does not store, cache, or persist any KYC data.
 - It does not make network requests on its own - your `lookupFn` does.
-- It does not modify the three core TrustBridge checks.
+- It does not modify the core TrustBridge checks.
 - It is not enforced by default - you opt in by registering it.
 
 ---

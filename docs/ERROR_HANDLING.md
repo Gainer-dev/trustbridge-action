@@ -26,7 +26,7 @@ Related docs: [README](../README.md) · [Architecture](ARCHITECTURE.md) · [Usag
 | TLS/certificate failure | Handshake/cert error connecting to `horizon_url` | No (not retryable — see below) | `xlm_balance=unknown`, distinct "Horizon TLS / certificate verification" check | Posted, attributes failure to the endpoint not the account | per `fail_on_missing` |
 | Unauthorized trustline | Horizon 200, trustline exists, `is_authorized: false` | No | Per `unauthorized_trustline_policy` — `fail` clears `trustline_exists` | Posted with issuer-authorization remediation/warning | per `fail_on_missing` (when policy is `fail`) |
 | Clawback-enabled trustline | Horizon 200, trustline exists, `is_clawback_enabled: true` | No | Warns by default; fails if `clawback_strict_mode: true` | Posted with clawback warning | per `fail_on_missing` (when strict mode is on) |
-| Unsafe `horizon_url`/`horizon_url_fallback`/`rpc_fallback_url` | SSRF-unsafe target or non-HTTPS scheme | No | Not set (run fails early) | Not posted | `setFailed` |
+| Unsafe `horizon_url`/`horizon_url_fallback`/`rpc_fallback_url`/`dashboard_roster_url` | SSRF-unsafe target or non-HTTPS scheme | No | Not set (run fails early) | Not posted | `setFailed` |
 | Comment API failure | GitHub 403/422/etc. | No | Still set from checks | Not posted | Check result still applies |
 | No issue context | workflow_dispatch without issue | No | Set normally | Skipped (warning) | per check result |
 
@@ -202,9 +202,9 @@ Raised when the TLS handshake to `horizon_url` itself fails — expired certific
 
 **Common cause:** a private/enterprise Horizon mirror with a self-signed or internally-issued certificate that the Actions runner does not trust. See [Private Horizon mirrors](USAGE.md#private-horizon-mirrors) for setup guidance — TrustBridge never disables certificate verification to work around this.
 
-### Unsafe or non-HTTPS `horizon_url` / `horizon_url_fallback` / `rpc_fallback_url`
+### Unsafe or non-HTTPS `horizon_url` / `horizon_url_fallback` / `rpc_fallback_url` / `dashboard_roster_url`
 
-Rejected before any connection is attempted if the URL targets a private IP, loopback, link-local address, a cloud metadata endpoint, uses `file://`, or does not use `https://`. The run fails immediately (same as invalid input) — no Horizon call is ever made.
+Rejected before any connection is attempted if the URL targets a private IP, loopback, link-local address, a cloud metadata endpoint, uses `file://`, or does not use `https://` (unless `allowHttp` / `dashboard_roster_allow_http` is explicitly enabled). The run fails immediately (same as invalid input) — no Horizon/Dashboard call is ever made.
 
 ### Waiting for funding (`wait_until_funded`)
 

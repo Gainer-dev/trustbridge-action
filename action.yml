@@ -667,6 +667,14 @@ inputs:
     required: false
     default: '5000'
 
+  dashboard_roster_allow_http:
+    description: >-
+      Allow non-HTTPS URLs for dashboard_roster_url. Defaults to false.
+      Only enable this for local testing or mock endpoints, as it bypasses
+      HTTPS-only SSRF protections.
+    required: false
+    default: 'false'
+
   soroban_full_roster:
     description: >-
       If true, retrieves the complete assignee roster from the Soroban contract using pagination.
