@@ -182,3 +182,48 @@ function verifySignature(payload, secret, signatureHeader) {
 **Helpful links:**
 - [TrustBridge webhook docs](https://github.com/Stellar-TrustBridge/trustbridge-action/blob/main/docs/USAGE.md#signed-dashboard-webhooks)
 - [Issue #101 — Signed webhooks design](https://github.com/Stellar-TrustBridge/trustbridge-action/issues/101)
+
+---
+
+## OIDC webhook authentication failures {#oidc-webhook-troubleshooting}
+
+These apply when `webhook_auth_mode: oidc` is set. OIDC failures are non-fatal: validation and comment posting continue, but the dashboard rejects or never sees the webhook.
+
+### Token minting fails (missing `id-token: write`)
+
+**Symptom:** The Actions log shows `OIDC token minting failed for audience "trustbridge-dashboard": ... Ensure the workflow has 'permissions: id-token: write'`, and the receiver returns `401` because no `Authorization` header was sent.
+
+**Fix:** Grant the permission on the job (or workflow) that runs TrustBridge. Setting any `permissions:` block drops unlisted scopes, so list `id-token: write` explicitly alongside the others:
+
+```yaml
+permissions:
+  issues: write
+  contents: read
+  id-token: write
+```
+
+GitHub does not issue OIDC tokens to `pull_request` runs from forks, so expect this warning there. Use HMAC mode for fork-triggered workflows or run TrustBridge from a trusted event (for example `issue_comment` or `issues`).
+
+### Audience mismatch
+
+**Symptom:** The log shows `Webhook delivered ... (OIDC) — HTTP 401` (or `403`), and the receiver reports an invalid `aud` claim.
+
+**Fix:** `webhook_oidc_audience` (default `trustbridge-dashboard`) must exactly equal the audience your receiver accepts — same case, no trailing slash, and no URL unless the receiver expects one. Decode the token's claims on the receiver side and compare `aud` with the configured value.
+
+### Webhook auth mode mismatch
+
+**Symptom:** HTTP `401`/`403` even though the token mints successfully, or signature verification failures on the receiver.
+
+**Fix:** In OIDC mode the action sends only `Authorization: Bearer <token>` and does **not** send `X-TrustBridge-Signature`, even when `webhook_secret` is set. Receivers must verify the JWT (issuer, audience, `repository` claim, signature against the issuer's JWKS) instead of the HMAC signature. Conversely, a receiver that expects a bearer token will reject HMAC-mode requests. Configure both sides for the same mode.
+
+### Issuer rejected on GitHub Enterprise Server
+
+**Symptom:** OIDC works on github.com but the receiver rejects tokens from GHES, or minting fails on GHES.
+
+**Fix:** GHES tokens are issued by `https://<your-ghes-host>/_services/token`, not `https://token.actions.githubusercontent.com`, so the receiver must trust that issuer and fetch its JWKS. The OIDC provider requires GHES 3.8 or later. See [GHES_COMPATIBILITY.md](GHES_COMPATIBILITY.md) for the feature matrix and permission requirements.
+
+> Never paste real tokens or secrets into issues or logs when asking for help. Tokens minted by the action are masked with `core.setSecret()`; redact any value you copy from receiver-side logs.
+
+**Helpful links:**
+- [TrustBridge OIDC docs](https://github.com/Stellar-TrustBridge/trustbridge-action/blob/main/docs/USAGE.md#oidc-federation-for-dashboard-webhooks-issue-224)
+- [GitHub: About security hardening with OpenID Connect](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect)

@@ -167,12 +167,119 @@ export function buildWebhookPayload(
 }
 
 // ---------------------------------------------------------------------------
+// Schema validation (Issue #471)
+// ---------------------------------------------------------------------------
+
+/** Mirrors `schemas/webhook-payload.schema.json`; kept in sync by webhook-contract tests. */
+export const WEBHOOK_PAYLOAD_REQUIRED_FIELDS = [
+  'schema_version',
+  'event',
+  'timestamp',
+  'repository',
+  'issue_number',
+  'stellar_address',
+  'result',
+] as const;
+export const WEBHOOK_RESULT_REQUIRED_FIELDS = [
+  'valid',
+  'account_funded',
+  'trustline_exists',
+  'xlm_balance',
+  'checks',
+] as const;
+export const WEBHOOK_CHECK_REQUIRED_FIELDS = ['label', 'passed'] as const;
+export const WEBHOOK_REPOSITORY_PATTERN = '^[^/]+/[^/]+$';
+export const WEBHOOK_STELLAR_ADDRESS_PATTERN = '^[GC][A-Z2-7]{3}\\.{3}[A-Z2-7]{4}$';
+
+const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
+function checkObjectKeys(
+  obj: Record<string, unknown>,
+  allowed: readonly string[],
+  at: string,
+  errors: string[],
+): void {
+  for (const field of allowed) {
+    if (!(field in obj)) errors.push(`${at}: missing required property "${field}"`);
+  }
+  for (const key of Object.keys(obj)) {
+    if (!allowed.includes(key)) errors.push(`${at}: unexpected property "${key}"`);
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Validate an outbound webhook payload against
+ * `schemas/webhook-payload.schema.json`.
+ *
+ * @returns A list of violations; empty when the payload is conformant.
+ */
+export function validateWebhookPayload(payload: unknown): string[] {
+  const errors: string[] = [];
+  if (!isPlainObject(payload)) return ['payload: must be an object'];
+
+  checkObjectKeys(payload, WEBHOOK_PAYLOAD_REQUIRED_FIELDS, 'payload', errors);
+
+  if (payload.schema_version !== '1') errors.push('schema_version: must be "1"');
+  if (payload.event !== 'validation_complete') errors.push('event: must be "validation_complete"');
+  if (typeof payload.timestamp !== 'string' || !ISO_DATE_TIME.test(payload.timestamp) || isNaN(Date.parse(payload.timestamp))) {
+    errors.push('timestamp: must be an ISO-8601 date-time string');
+  }
+  if (typeof payload.repository !== 'string' || !new RegExp(WEBHOOK_REPOSITORY_PATTERN).test(payload.repository)) {
+    errors.push('repository: must be in "owner/repo" format');
+  }
+  const issue = payload.issue_number;
+  if (issue !== null && (typeof issue !== 'number' || !Number.isInteger(issue) || issue < 1)) {
+    errors.push('issue_number: must be an integer >= 1 or null');
+  }
+  if (typeof payload.stellar_address !== 'string' || !new RegExp(WEBHOOK_STELLAR_ADDRESS_PATTERN).test(payload.stellar_address)) {
+    errors.push('stellar_address: must be a redacted address (first-4...last-4)');
+  }
+
+  const result = payload.result;
+  if (!isPlainObject(result)) {
+    if ('result' in payload) errors.push('result: must be an object');
+    return errors;
+  }
+  checkObjectKeys(result, WEBHOOK_RESULT_REQUIRED_FIELDS, 'result', errors);
+  for (const field of ['valid', 'account_funded', 'trustline_exists'] as const) {
+    if (field in result && typeof result[field] !== 'boolean') errors.push(`result.${field}: must be a boolean`);
+  }
+  if ('xlm_balance' in result && typeof result.xlm_balance !== 'string') {
+    errors.push('result.xlm_balance: must be a string');
+  }
+  if ('checks' in result) {
+    if (!Array.isArray(result.checks)) {
+      errors.push('result.checks: must be an array');
+    } else {
+      result.checks.forEach((check, i) => {
+        const at = `result.checks[${i}]`;
+        if (!isPlainObject(check)) {
+          errors.push(`${at}: must be an object`);
+          return;
+        }
+        checkObjectKeys(check, WEBHOOK_CHECK_REQUIRED_FIELDS, at, errors);
+        if ('label' in check && typeof check.label !== 'string') errors.push(`${at}.label: must be a string`);
+        if ('passed' in check && typeof check.passed !== 'boolean') errors.push(`${at}.passed: must be a boolean`);
+      });
+    }
+  }
+
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
 // Delivery
 // ---------------------------------------------------------------------------
 
 /**
  * Deliver a signed webhook notification to the configured endpoint.
  *
+ * - Validates the payload against `schemas/webhook-payload.schema.json` and
+ *   refuses to send (fail closed) when it does not conform.
  * - Signs the JSON payload with HMAC-SHA256 when a secret is provided.
  * - Respects `timeoutMs` via `AbortController`.
  * - **Never throws** — all errors are swallowed and returned in the result
@@ -187,6 +294,16 @@ export async function deliverWebhook(
   fetchFn: typeof fetch = fetch,
 ): Promise<WebhookDeliveryResult> {
   const timeoutMs = config.timeoutMs ?? 5_000;
+
+  // Fail closed: never send a body that breaks the published receiver contract.
+  const violations = validateWebhookPayload(payload);
+  if (violations.length > 0) {
+    return {
+      sent: false,
+      error: `payload failed webhook-payload.schema.json validation: ${violations.join('; ')}`,
+    };
+  }
+
   let body: string;
   try {
     body = JSON.stringify(payload);

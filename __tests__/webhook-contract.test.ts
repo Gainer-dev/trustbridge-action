@@ -14,7 +14,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   buildWebhookPayload,
+  deliverWebhook,
+  validateWebhookPayload,
   WebhookPayload,
+  WEBHOOK_PAYLOAD_REQUIRED_FIELDS,
+  WEBHOOK_RESULT_REQUIRED_FIELDS,
+  WEBHOOK_CHECK_REQUIRED_FIELDS,
+  WEBHOOK_REPOSITORY_PATTERN,
+  WEBHOOK_STELLAR_ADDRESS_PATTERN,
 } from '../src/webhook';
 
 // ---------------------------------------------------------------------------
@@ -434,5 +441,85 @@ describe('checkConformance rejects non-conformant payloads', () => {
     const { result: _r, ...payload } = buildWebhookPayload(passedResult, ADDRESS, 'owner/repo', 1);
     const violations = checkConformance(payload as any);
     expect(violations.some((v) => v.includes('result'))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Runtime validation before send (Issue #471)
+// ---------------------------------------------------------------------------
+
+describe('validateWebhookPayload stays in sync with the schema file', () => {
+  const props = () => schema['properties'] as Record<string, Record<string, any>>;
+
+  it('required field lists match the schema', () => {
+    expect([...WEBHOOK_PAYLOAD_REQUIRED_FIELDS]).toEqual(schema['required']);
+    expect([...WEBHOOK_RESULT_REQUIRED_FIELDS]).toEqual(props()['result']['required']);
+    expect([...WEBHOOK_CHECK_REQUIRED_FIELDS]).toEqual(
+      props()['result']['properties']['checks']['items']['required'],
+    );
+  });
+
+  it('patterns match the schema', () => {
+    expect(WEBHOOK_REPOSITORY_PATTERN).toBe(props()['repository']['pattern']);
+    expect(WEBHOOK_STELLAR_ADDRESS_PATTERN).toBe(props()['stellar_address']['pattern']);
+  });
+
+  it('accepts the schema example payload', () => {
+    for (const example of schema['examples'] as unknown[]) {
+      expect(validateWebhookPayload(example)).toEqual([]);
+    }
+  });
+
+  it('accepts payloads built by buildWebhookPayload', () => {
+    expect(validateWebhookPayload(buildWebhookPayload(passedResult, ADDRESS, 'owner/repo', 1))).toEqual([]);
+    expect(validateWebhookPayload(buildWebhookPayload(failedResult, ADDRESS, 'owner/repo', null))).toEqual([]);
+  });
+});
+
+describe('validateWebhookPayload rejects invalid payloads', () => {
+  const valid = (): any => buildWebhookPayload(passedResult, ADDRESS, 'owner/repo', 1);
+
+  it.each([
+    ['non-object payload', () => 'nope', 'payload'],
+    ['wrong schema_version', () => ({ ...valid(), schema_version: '2' }), 'schema_version'],
+    ['unknown event', () => ({ ...valid(), event: 'other' }), 'event'],
+    ['non ISO timestamp', () => ({ ...valid(), timestamp: 'yesterday' }), 'timestamp'],
+    ['bad repository', () => ({ ...valid(), repository: 'no-slash' }), 'repository'],
+    ['non-integer issue_number', () => ({ ...valid(), issue_number: 1.5 }), 'issue_number'],
+    ['unredacted stellar_address', () => ({ ...valid(), stellar_address: ADDRESS }), 'stellar_address'],
+    ['extra top-level property', () => ({ ...valid(), secret: 'x' }), 'unexpected property "secret"'],
+    ['missing result', () => { const p = valid(); delete p.result; return p; }, 'missing required property "result"'],
+    ['string result.valid', () => { const p = valid(); p.result.valid = 'true'; return p; }, 'result.valid'],
+    ['numeric xlm_balance', () => { const p = valid(); p.result.xlm_balance = 1; return p; }, 'result.xlm_balance'],
+    ['extra result property', () => { const p = valid(); p.result.remediation = 'x'; return p; }, 'unexpected property "remediation"'],
+    ['check with detail field', () => { const p = valid(); p.result.checks[0].detail = 'x'; return p; }, 'unexpected property "detail"'],
+    ['check with non-boolean passed', () => { const p = valid(); p.result.checks[0].passed = 'yes'; return p; }, 'result.checks[0].passed'],
+  ])('%s', (_name, make, expected) => {
+    const errors = validateWebhookPayload(make());
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((e) => e.includes(expected as string))).toBe(true);
+  });
+});
+
+describe('deliverWebhook fails closed on schema violations', () => {
+  const CONFIG = { webhookUrl: 'https://dashboard.example.com/webhook', webhookSecret: 'test-secret' };
+
+  it('does not call fetch and returns a clear error for an invalid payload', async () => {
+    const mockFetch = jest.fn().mockResolvedValue({ status: 200 });
+    const payload = { ...buildWebhookPayload(passedResult, ADDRESS, 'owner/repo', 1), stellar_address: ADDRESS };
+
+    const result = await deliverWebhook(payload, CONFIG, mockFetch as any);
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(result.sent).toBe(false);
+    expect(result.error).toContain('webhook-payload.schema.json');
+    expect(result.error).toContain('stellar_address');
+  });
+
+  it('sends a conformant payload', async () => {
+    const mockFetch = jest.fn().mockResolvedValue({ status: 200 });
+    const result = await deliverWebhook(buildWebhookPayload(passedResult, ADDRESS, 'owner/repo', 1), CONFIG, mockFetch as any);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(result.sent).toBe(true);
   });
 });
