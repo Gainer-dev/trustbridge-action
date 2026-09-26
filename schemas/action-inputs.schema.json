@@ -581,6 +581,39 @@
       "type": "string",
       "description": "Maximum number of pages to fetch when soroban_full_roster is true",
       "default": "10"
+    },
+    "issue_number": {
+      "type": "string"
+    },
+    "fixture_mode": {
+      "type": "string"
+    },
+    "fixture_path": {
+      "type": "string"
+    },
+    "unauthorized_trustline_policy": {
+      "type": "string"
+    },
+    "clawback_strict_mode": {
+      "type": "string"
+    },
+    "skip_for_maintainers": {
+      "type": "string"
+    },
+    "skip_if_maintainer": {
+      "type": "string"
+    },
+    "maintainers_allowlist": {
+      "type": "string"
+    },
+    "horizon_pin_fingerprint": {
+      "type": "string"
+    },
+    "federation_resolution_enabled": {
+      "type": "string"
+    },
+    "custom_comment_template_path": {
+      "type": "string"
     }
   }
 }

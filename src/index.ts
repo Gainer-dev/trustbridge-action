@@ -332,14 +332,10 @@ function resolveConfiguredReadyLabels(): {
 } {
   const passLabel = (
     core.getInput("pass_label") ||
-    core.getInput("ready_pass_label") ||
-    core.getInput("ready_label_pass") ||
     ""
   ).trim();
   const failLabel = (
     core.getInput("fail_label") ||
-    core.getInput("ready_fail_label") ||
-    core.getInput("ready_label_fail") ||
     ""
   ).trim();
   return { passLabel, failLabel };
@@ -419,7 +415,7 @@ async function run(): Promise<void> {
       .split(',')
       .map((m) => m.trim())
       .filter(Boolean);
-    const customCodeownersPath = core.getInput('codeowners_path') || '';
+    const customCodeownersPath = '';
 
     const rawGithubToken = core.getInput('github_token');
     const githubAppToken = resolveInput('github_app_token', core.getInput('github_app_token'));
@@ -490,8 +486,8 @@ async function run(): Promise<void> {
   const sorobanRosterPageLimit = parseNumberInput(core.getInput('soroban_roster_page_limit') || '10', 10, { min: 1, max: 1000 });
 
   // Issue #219 / #318: Contract registry lookup (source 1 of address resolution).
-  const sorobanRpcUrl = core.getInput('soroban_rpc_url') || '';
-  const contractId = core.getInput('contract_id') || '';
+  const sorobanRpcUrl = '';
+  const contractId = '';
   let contractResolvedAddress: string | undefined;
   if (sorobanRpcUrl && contractId) {
     const assigneeLogin = resolveAssigneeLoginFromContext();
@@ -650,7 +646,7 @@ async function run(): Promise<void> {
   const assetsJsonRaw = core.getInput("assets_json") || "";
 
   // Soroban contract registry (Issue #7)
-  const githubUsername = core.getInput("github_username") || "";
+  const githubUsername = "";
 
   // Plugin runner flag (Issue #198) — default off
   const usePluginRunner = parseBooleanInput(
@@ -671,9 +667,8 @@ async function run(): Promise<void> {
   );
   const validationJsonPath =
     core.getInput("validation_json_path") || "validation.json";
-  const previousValidationPath =
-    core.getInput("previous_validation_path") || "";
-  const privacyMode = parseBooleanInput(core.getInput("privacy_mode"), false);
+  const previousValidationPath = "";
+  const privacyMode = false;
 
   // External plugins from workspace (allowlisted only)
   const trustbridgePluginsPathRaw =
@@ -691,8 +686,7 @@ async function run(): Promise<void> {
   const stellarAddressesRaw = core.getInput("stellar_addresses") || "";
 
   // Full-report artifact path (used when comment exceeds size limit)
-  const reportOutputPath =
-    core.getInput("report_output_path") || "trustbridge-report.md";
+  const reportOutputPath = "trustbridge-report.md";
 
   // Failure snooze window (Issue #155)
   const snoozeWindowMinutes = parseNumberInput(
@@ -1041,10 +1035,7 @@ async function run(): Promise<void> {
 
   // SEP-0001 stellar.toml fetch and caching inputs (optional, off by default)
   // GitHub Checks API integration (Wave #26 — optional, off by default)
-  const useCheckRuns = parseBooleanInput(
-    core.getInput("use_check_runs"),
-    false,
-  );
+  const useCheckRuns = false;
 
   // Ledger freshness / lag guard inputs (Issue #107 — optional, off by default)
   const checkLedgerFreshnessEnabled = parseBooleanInput(
