@@ -85,24 +85,45 @@ export async function fetchDashboardRoster(
   }
 
   // Stream body to enforce size limit safely
-  const reader = (currentResponse.body as any).getReader();
+  const body = currentResponse.body;
   let receivedBytes = 0;
   const chunks: Uint8Array[] = [];
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) {
-        receivedBytes += value.length;
-        if (receivedBytes > MAX_ROSTER_SIZE_BYTES) {
-          throw new Error('Response exceeded size limit');
+  if (body && typeof (body as any).getReader === 'function') {
+    // Web Streams API
+    const reader = (body as any).getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          receivedBytes += value.length;
+          if (receivedBytes > MAX_ROSTER_SIZE_BYTES) {
+            throw new Error('Response exceeded size limit');
+          }
+          chunks.push(value);
         }
-        chunks.push(value);
       }
+    } finally {
+      reader.releaseLock();
     }
-  } finally {
-    reader.releaseLock();
+  } else if (body && typeof (body as any)[Symbol.asyncIterator] === 'function') {
+    // Node streams or other AsyncIterables
+    for await (const chunk of (body as any)) {
+      const data = chunk instanceof Uint8Array ? chunk : Buffer.from(chunk as any);
+      receivedBytes += data.length;
+      if (receivedBytes > MAX_ROSTER_SIZE_BYTES) {
+        throw new Error('Response exceeded size limit');
+      }
+      chunks.push(data);
+    }
+  } else {
+    // Fallback to arrayBuffer if no streaming is available
+    const buffer = await currentResponse.arrayBuffer();
+    if (buffer.byteLength > MAX_ROSTER_SIZE_BYTES) {
+      throw new Error('Response exceeded size limit');
+    }
+    chunks.push(new Uint8Array(buffer));
   }
 
   const text = Buffer.concat(chunks).toString('utf-8');
