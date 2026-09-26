@@ -31,3 +31,41 @@ retry total-wait setting for a slow private mirror.
 ## Comment posting fails with 404 on GitHub Enterprise Server (GHES)
 
 TrustBridge builds its Octokit client from `context.apiUrl` (backed by the runner's `GITHUB_API_URL`), so it should target your GHES instance automatically. A 404 or "resource not accessible" error usually means either the runner isn't actually GHES-registered (so `GITHUB_API_URL` never got set) or the token lacks `issues: write`. See [docs/USAGE.md — GitHub Enterprise Server (GHES) support](USAGE.md#github-enterprise-server-ghes-support) for the full verification checklist.
+
+## Plugin fails to load or run
+
+**Symptom:** A configured plugin fails to execute, or you see `PluginLoadError` in the workflow logs.
+
+**Checks:**
+1. Confirm `trustbridge_plugins_path` is a relative path inside the workspace (e.g., `plugins/kyc.ts`).
+2. Verify the file exists and exports a valid `CheckPlugin` object.
+3. Check if the plugin throws an unexpected synchronous error during `run()`.
+
+**Helpful links:**
+- [Plugin Architecture](PLUGIN_ARCHITECTURE.md)
+- [KYC Plugin Example](examples/kyc-plugin.md)
+
+## Signed webhook not received
+
+**Symptom:** Your dashboard doesn't receive TrustBridge notifications or rejects them with a signature error.
+
+**Checks:**
+1. Confirm `webhook_url` is a publicly reachable HTTPS endpoint.
+2. Check the Actions log for delivery failure messages (e.g., `Webhook delivery failed`).
+3. Verify that `webhook_secret` matches exactly on both the action input and the receiving server.
+
+**Helpful links:**
+- [FAQ: Signed webhook not received](FAQ.md#webhook-not-received)
+- [USAGE: Dashboard webhook receiver contract](USAGE.md#dashboard-webhook-receiver-contract-issue-326)
+
+## GitHub Projects V2 does not update
+
+**Symptom:** The action runs successfully, but the linked issue does not move to the expected column in your GitHub Project.
+
+**Checks:**
+1. Verify you are using a Personal Access Token (Classic PAT with `repo` and `project` scopes, or a fine-grained PAT) for `trustbridge_projects_token`. The default `GITHUB_TOKEN` cannot update org-level Projects.
+2. Check that the provided token hasn't expired.
+3. Check the workflow logs for permission errors from the GitHub GraphQL API.
+
+**Helpful links:**
+- [USAGE: GitHub Projects v2 status updates](USAGE.md#github-projects-v2-status-updates-issue-222)

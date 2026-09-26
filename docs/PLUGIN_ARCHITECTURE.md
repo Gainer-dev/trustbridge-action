@@ -8,7 +8,7 @@ Related docs: [README](../README.md) · [Usage](USAGE.md) · [Architecture](ARCH
 
 ## Why plugins?
 
-The original `runAccountChecks` in `src/checks.ts` hard-codes three checks in a single function. The plugin system makes each check a self-contained unit that composes into the same `ValidationResult` structure.
+The original `runAccountChecks` in `src/checks.ts` hard-coded checks in a single function. The plugin system makes each check a self-contained unit that composes into the same `ValidationResult` structure.
 
 ---
 
@@ -43,6 +43,41 @@ interface CheckPluginResult {
   readonly remediation?: string;
 }
 ```
+
+### `PluginRegistry`
+
+A deduplication-safe registry storing `CheckPlugin` instances.
+- **First-wins semantics**: Registering a plugin with an already existing `id` is a no-op.
+- Maintains insertion order for running plugins.
+
+### `ValidationResult` Composition
+
+`runPlugins(ctx, registry)` executes plugins sequentially and builds a composite `ValidationResult`:
+- `valid`: true only when *all* plugins pass.
+- Top-level flags (`accountFunded`, `trustlineExists`, `xlmReserveMet`) are derived dynamically from well-known plugin ids (e.g., `'account-funded'`, `'trustline'`, `'xlm-reserve'`).
+- `checks`: One `CheckResultItem` array item per plugin, preserving execution order.
+- `remediation`: Aggregates all non-empty `remediation` strings from failed plugins.
+
+---
+
+## Lifecycle & Loader (`pluginLoader`)
+
+### Asynchronous Loading
+
+Plugins are dynamically imported at runtime via `file://` URLs. The `pluginLoader` resolves plugins relative to the workspace root (`GITHUB_WORKSPACE`).
+
+- `loadPlugin`: Asynchronously loads and validates a single plugin. It looks for a `default` export, a named `plugin` export, or the first exported object matching the `CheckPlugin` interface.
+- `loadPluginsFromAllowlist`: Loads multiple plugins defined in an allowlist. Missing or invalid plugins log warnings but **fail-open** so the core action is not blocked.
+
+### Core Plugins (`corePlugins`)
+
+The core checks are shipped as built-in plugins:
+- `accountFundedPlugin` (`trustbridge/account-funded`)
+- `trustlinePlugin` (`trustbridge/trustline`)
+- `xlmReservePlugin` (`trustbridge/xlm-reserve`)
+- `homeDomainPlugin` (`trustbridge/home-domain`)
+
+These are pre-registered into the `defaultRegistry` at action startup via `registerCorePlugins()`.
 
 ---
 
@@ -88,15 +123,17 @@ The runner automatically escapes Markdown metacharacters in plugin `label`, `det
 ### 4. No runtime npm loading
 Arbitrary npm packages are out of scope for v1.
 
-### 5. Frozen workspace layout for optional plugins
+### 5. Workspace-only path constraints
 Optional plugins are loaded from the workspace only, never from `node_modules` or remote URLs.
 
 - Workspace root: `GITHUB_WORKSPACE`
 - Example plugin path: `plugins/kyc.ts`
 - Enable via action input: `trustbridge_plugins_path: plugins/kyc.ts`
-- Example secret source: `process.env.KYC_API_KEY`
 
-The loader rejects absolute paths and any path that escapes the workspace root.
+The loader actively rejects:
+- Absolute paths.
+- Path traversal sequences (`../`) attempting to escape the workspace root.
+- Non-file targets (e.g., directories or symlinks).
 
 ---
 
@@ -106,13 +143,13 @@ The loader rejects absolute paths and any path that escapes the workspace root.
 src/
   plugin.ts         - CheckPlugin, CheckPluginContext, CheckPluginResult, PluginRegistry
   pluginRunner.ts   - runPlugins(ctx, registry?) -> ValidationResult
-  pluginLoader.ts   - workspace-only plugin loader with allowlist + path guards
+  pluginLoader.ts   - Workspace-only async plugin loader with allowlist + path guards
   corePlugins.ts    - accountFundedPlugin, trustlinePlugin, xlmReservePlugin, homeDomainPlugin
 __tests__/
-  plugin.test.ts    - registry, runner, core plugins, security contract
-  plugin-loader.test.ts - loader path guards, allowlist, load failures, duplicate ids
+  plugin.test.ts    - Registry, runner, core plugins, security contract
+  plugin-loader.test.ts - Loader path guards and allowlist behavior
 docs/
-  PLUGIN_ARCHITECTURE.md - this document
+  PLUGIN_ARCHITECTURE.md - This document
 ```
 
 ---

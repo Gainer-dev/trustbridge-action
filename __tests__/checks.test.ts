@@ -1216,6 +1216,19 @@ describe('claimable-balance-aware funded definition (Issue #260)', () => {
     expect(result.checks.some((c) => c.label === 'Claimable balances')).toBe(true);
     expect(result.hasClaimableBalances).toBe(true);
   });
+
+  it('count policy: funded account with empty claimables has no claimable check', async () => {
+    const account = makeAccount({
+      balances: [
+        { balance: '10.0000000', asset_type: 'native', buying_liabilities: '0', selling_liabilities: '0' },
+        { balance: '100.0000000', asset_type: 'credit_alphanum4', asset_code: 'USDC', asset_issuer: USDC_ISSUER, buying_liabilities: '0', selling_liabilities: '0' },
+      ],
+    });
+    const result = await runAccountChecks(account, { ...defaultConfig, claimableBalancePolicy: 'count' });
+    expect(result.valid).toBe(true);
+    expect(result.checks.some((c) => c.label === 'Claimable balances')).toBe(false);
+    expect(result.hasClaimableBalances).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

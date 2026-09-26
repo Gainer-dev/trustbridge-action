@@ -8,6 +8,7 @@ export async function fetchDashboardRoster(
   url: string,
   secret: string,
   timeoutMs: number,
+  allowHttp: boolean = false,
   fetchFn: typeof fetch = fetch
 ): Promise<AssigneeAddressMap> {
   const trimmedUrl = url.trim();
@@ -15,7 +16,7 @@ export async function fetchDashboardRoster(
     throw new Error('Dashboard roster URL cannot be empty.');
   }
 
-  const ssrfCheck = validateSsrfSafeUrl(trimmedUrl, 'dashboard_roster_url', { allowHttp: true });
+  const ssrfCheck = validateSsrfSafeUrl(trimmedUrl, 'dashboard_roster_url', { allowHttp });
   if (!ssrfCheck.valid) {
     throw new Error(`Dashboard roster URL failed security validation: ${ssrfCheck.errors.join(', ')}`);
   }
@@ -63,7 +64,7 @@ export async function fetchDashboardRoster(
       if (!location) throw new Error('Redirect missing location');
 
       const redirectUrl = new URL(location, targetUrl).toString();
-      const redirectSsrf = validateSsrfSafeUrl(redirectUrl, 'dashboard_roster_redirect', { allowHttp: true });
+      const redirectSsrf = validateSsrfSafeUrl(redirectUrl, 'dashboard_roster_redirect', { allowHttp });
       if (!redirectSsrf.valid) {
         throw new Error(`Dashboard roster redirect failed security validation: ${redirectSsrf.errors.join(', ')}`);
       }

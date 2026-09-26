@@ -480,6 +480,7 @@ async function run(): Promise<void> {
   const dashboardRosterUrl = core.getInput('dashboard_roster_url') || '';
   const dashboardRosterSecret = core.getInput('dashboard_roster_secret') || '';
   const dashboardRosterTimeoutMs = parseNumberInput(core.getInput('dashboard_roster_timeout_ms') || '5000', 5000, { min: 1000, max: 60000 });
+  const dashboardRosterAllowHttp = parseBooleanInput(core.getInput('dashboard_roster_allow_http'), false);
 
   // Issue #318: Soroban full roster inputs
   const sorobanFullRoster = parseBooleanInput(core.getInput('soroban_full_roster'), false);
@@ -527,7 +528,7 @@ async function run(): Promise<void> {
     const assigneeLogin = resolveAssigneeLoginFromContext();
     if (assigneeLogin) {
       try {
-        const map = await fetchDashboardRoster(dashboardRosterUrl, dashboardRosterSecret, dashboardRosterTimeoutMs);
+        const map = await fetchDashboardRoster(dashboardRosterUrl, dashboardRosterSecret, dashboardRosterTimeoutMs, dashboardRosterAllowHttp);
         const found = map[assigneeLogin.toLowerCase()];
         if (found) dashboardResolvedAddress = found;
       } catch (err) {

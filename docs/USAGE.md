@@ -2,7 +2,7 @@
 
 How to integrate **trustbridge-action** into your repository workflows.
 
-Related docs: [README](../README.md) · [Architecture](ARCHITECTURE.md) · [Error handling](ERROR_HANDLING.md) · [Cron re-validation](CRON_REVALIDATION.md)
+Related docs: [README](../README.md) · [Architecture](ARCHITECTURE.md) · [Plugin Architecture](PLUGIN_ARCHITECTURE.md) · [Error handling](ERROR_HANDLING.md) · [Cron re-validation](CRON_REVALIDATION.md)
 
 > Security warning: TrustBridge strips raw Stellar addresses, muxed addresses, and secret-bearing URL/query values before writing them to GitHub Actions logs. Do not rely on `debug_mode` or `log_inputs` to expose account IDs or webhook secrets in a run; they are automatically scrubbed at the logger boundary and any leaked raw value is treated as a failing regression in the test suite.
 
@@ -248,8 +248,11 @@ with:
   dashboard_roster_url: 'https://dashboard.example.com/api/roster'
   dashboard_roster_secret: '${{ secrets.ROSTER_SECRET }}'
   dashboard_roster_timeout_ms: '5000'
+  dashboard_roster_allow_http: 'false'
 ```
 When configured, TrustBridge issues an HTTP GET request to `dashboard_roster_url`. When `dashboard_roster_secret` is set, requests include `X-TrustBridge-Timestamp` and `X-TrustBridge-Signature: sha256=<hex_hmac>` headers. The API must return a JSON dictionary mapping logins to addresses (e.g. `{"alice": "G...", "bob": "G..."}`).
+
+**Security Tradeoffs:** `dashboard_roster_url` enforces HTTPS by default and protects against SSRF (Server-Side Request Forgery) by blocking loopback and private IP addresses. Setting `dashboard_roster_allow_http: 'true'` disables the HTTPS enforcement for the dashboard URL, which may expose the roster fetching traffic (and any signature headers) to interception. This should only be used for local testing or mock endpoints.
 
 ### Soroban Contract Roster (Issue #318)
 ```yaml

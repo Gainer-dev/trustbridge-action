@@ -3,7 +3,7 @@ import { HorizonError, HorizonRateLimitError, isCreditBalance,
   parseRetryAfterMs,
   fetchNetworkPassphrase, FetchLike,
   parseHorizonBalance, normalizeHorizonUrl, getAssetBalance } from '../src/horizon';
-import { fetchAccount, HorizonAccount, waitForFundedAccount, getNativeBalance, hasTrustline } from '../src/horizon';
+import { fetchAccount, HorizonAccount, waitForFundedAccount, getNativeBalance, hasTrustline, fetchClaimableBalanceCount } from '../src/horizon';
 import * as loggerModule from '../src/logger';
 import { SimpleCache } from '../src/cache';
 import type { Request, RequestInit, Response } from 'node-fetch';
@@ -1183,5 +1183,51 @@ describe('AbortSignal cancellation', () => {
       expect(result).toBeDefined();
       expect(callCount).toBe(2);
     });
+  });
+});
+
+describe('fetchClaimableBalanceCount', () => {
+  it('returns 0 on validation error', async () => {
+    const result = await fetchClaimableBalanceCount('http://169.254.169.254', 'G123', jest.fn() as any);
+    expect(result).toBe(0);
+  });
+
+  it('returns 0 on fetch error', async () => {
+    const fetchFn = jest.fn().mockRejectedValue(new Error('Network error'));
+    const result = await fetchClaimableBalanceCount('https://horizon.stellar.org', 'G123', fetchFn as any);
+    expect(result).toBe(0);
+  });
+
+  it('returns 0 on non-ok response', async () => {
+    const fetchFn = jest.fn().mockResolvedValue({ ok: false });
+    const result = await fetchClaimableBalanceCount('https://horizon.stellar.org', 'G123', fetchFn as any);
+    expect(result).toBe(0);
+  });
+
+  it('returns count when _embedded.records is populated', async () => {
+    const fetchFn = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ _embedded: { records: [1, 2, 3] } }),
+    });
+    const result = await fetchClaimableBalanceCount('https://horizon.stellar.org', 'G123', fetchFn as any);
+    expect(result).toBe(3);
+  });
+
+  it('returns count when records is populated directly', async () => {
+    const fetchFn = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ records: [1] }),
+    });
+    const result = await fetchClaimableBalanceCount('https://horizon.stellar.org', 'G123', fetchFn as any);
+    expect(result).toBe(1);
+  });
+
+  it('returns 0 when records is empty', async () => {
+    const fetchFn = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ records: [] }),
+    });
+    const result = await fetchClaimableBalanceCount('https://horizon.stellar.org', 'G123', fetchFn as any);
+    expect(result).toBe(0);
   });
 });
