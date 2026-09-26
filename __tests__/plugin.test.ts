@@ -583,4 +583,39 @@ describe('security: plugin context isolation', () => {
     expect(() => trustlinePlugin.run(ctx)).not.toThrow();
     expect(() => xlmReservePlugin.run(ctx)).not.toThrow();
   });
+
+  it('escapes external plugin label, detail, and remediation to prevent Markdown injection', () => {
+    const maliciousPlugin: CheckPlugin = {
+      id: 'external/malicious',
+      label: 'Malicious **bold**',
+      run: () => ({
+        passed: false,
+        detail: 'Look at my [link](javascript:alert(1))',
+        remediation: 'Run this `rm -rf /`',
+      }),
+    };
+    const r = makeRegistry(maliciousPlugin);
+    const result = runPlugins(makeCtx(), r);
+
+    expect(result.checks[0].label).toContain('\\*\\*bold\\*\\*');
+    expect(result.checks[0].detail).toContain('\\[link\\]\\(javascript:alert\\(1\\)\\)');
+    expect(result.remediation).toContain('\\`rm -rf /\\`');
+  });
+
+  it('does not escape core plugin outputs to preserve rich formatting', () => {
+    const coreLikePlugin: CheckPlugin = {
+      id: 'trustbridge/test-core',
+      label: 'Core label',
+      run: () => ({
+        passed: false,
+        detail: 'Core **detail**',
+        remediation: 'Core [link](https://example.com)',
+      }),
+    };
+    const r = makeRegistry(coreLikePlugin);
+    const result = runPlugins(makeCtx(), r);
+
+    expect(result.checks[0].detail).toBe('Core **detail**');
+    expect(result.remediation).toBe('Core [link](https://example.com)');
+  });
 });

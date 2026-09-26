@@ -56,8 +56,8 @@ Plugins must not execute arbitrary code sourced from issue bodies.
 ### 2. No dynamic imports or eval
 Plugins are reviewed TypeScript source files. The runner does not evaluate strings.
 
-### 3. Output escaping responsibility
-Plugin strings must escape external values before returning them.
+### 3. Output escaping
+The runner automatically escapes Markdown metacharacters in plugin `label`, `detail`, and `remediation` strings for all external plugins. Plugins should return plain text and must not attempt to include Markdown formatting (like `**bold**` or links), as it will be escaped and rendered literally. Core plugins (`trustbridge/*`) are trusted and may use Markdown formatting.
 
 ### 4. No runtime npm loading
 Arbitrary npm packages are out of scope for v1.
