@@ -76132,25 +76132,48 @@ async function fetchDashboardRoster(url, secret, timeoutMs, fetchFn = fetch) {
         throw new Error('Response body is empty');
     }
     // Stream body to enforce size limit safely
-    const reader = currentResponse.body.getReader();
+    const body = currentResponse.body;
     let receivedBytes = 0;
     const chunks = [];
-    try {
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done)
-                break;
-            if (value) {
-                receivedBytes += value.length;
-                if (receivedBytes > MAX_ROSTER_SIZE_BYTES) {
-                    throw new Error('Response exceeded size limit');
+    if (body && typeof body.getReader === 'function') {
+        // Web Streams API
+        const reader = body.getReader();
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done)
+                    break;
+                if (value) {
+                    receivedBytes += value.length;
+                    if (receivedBytes > MAX_ROSTER_SIZE_BYTES) {
+                        throw new Error('Response exceeded size limit');
+                    }
+                    chunks.push(value);
                 }
-                chunks.push(value);
             }
         }
+        finally {
+            reader.releaseLock();
+        }
     }
-    finally {
-        reader.releaseLock();
+    else if (body && typeof body[Symbol.asyncIterator] === 'function') {
+        // Node streams or other AsyncIterables
+        for await (const chunk of body) {
+            const data = chunk instanceof Uint8Array ? chunk : Buffer.from(chunk);
+            receivedBytes += data.length;
+            if (receivedBytes > MAX_ROSTER_SIZE_BYTES) {
+                throw new Error('Response exceeded size limit');
+            }
+            chunks.push(data);
+        }
+    }
+    else {
+        // Fallback to arrayBuffer if no streaming is available
+        const buffer = await currentResponse.arrayBuffer();
+        if (buffer.byteLength > MAX_ROSTER_SIZE_BYTES) {
+            throw new Error('Response exceeded size limit');
+        }
+        chunks.push(new Uint8Array(buffer));
     }
     const text = Buffer.concat(chunks).toString('utf-8');
     let parsed;
@@ -78473,6 +78496,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.computeWebhookSignature = computeWebhookSignature;
+exports.verifyWebhookSignature = verifyWebhookSignature;
 exports.buildWebhookPayload = buildWebhookPayload;
 exports.deliverWebhook = deliverWebhook;
 exports.sendWebhookNotification = sendWebhookNotification;
@@ -78497,6 +78521,18 @@ function computeWebhookSignature(body, secret) {
     const hmac = crypto.createHmac('sha256', secret);
     hmac.update(body, 'utf8');
     return `sha256=${hmac.digest('hex')}`;
+}
+/**
+ * Verify a webhook signature using a constant-time comparison.
+ *
+ * Receivers should pass the raw request body so verification covers the exact
+ * bytes that were signed rather than a re-serialised JSON representation.
+ */
+function verifyWebhookSignature(body, signature, secret) {
+    const expected = computeWebhookSignature(body, secret);
+    const received = Buffer.from(signature, 'utf8');
+    const expectedBytes = Buffer.from(expected, 'utf8');
+    return received.length === expectedBytes.length && crypto.timingSafeEqual(received, expectedBytes);
 }
 // ---------------------------------------------------------------------------
 // Payload builder

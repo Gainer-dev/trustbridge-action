@@ -117,4 +117,34 @@ describe('fetchDashboardRoster', () => {
     expect(callArgs.headers['X-TrustBridge-Signature']).toMatch(/^sha256=[0-9a-f]+$/);
     expect(callArgs.headers['X-TrustBridge-Timestamp']).toBeDefined();
   });
+
+  it('handles an async iterable body (Node stream)', async () => {
+    const jsonStr = JSON.stringify({ "GABC": "G123" });
+    const asyncIterable = {
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from(jsonStr.slice(0, 5));
+        yield Buffer.from(jsonStr.slice(5));
+      }
+    };
+    mockFetch.mockResolvedValueOnce({
+      status: 200,
+      ok: true,
+      body: asyncIterable
+    });
+    const result = await fetchDashboardRoster('https://valid.com', '', 1000, mockFetch as any);
+    expect(result).toEqual({ gabc: 'G123' });
+  });
+
+  it('handles a fallback arrayBuffer body (No stream)', async () => {
+    const jsonStr = JSON.stringify({ "GABC": "G123" });
+    const buffer = Buffer.from(jsonStr);
+    mockFetch.mockResolvedValueOnce({
+      status: 200,
+      ok: true,
+      body: {}, // No getReader or Symbol.asyncIterator
+      arrayBuffer: async () => buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+    });
+    const result = await fetchDashboardRoster('https://valid.com', '', 1000, mockFetch as any);
+    expect(result).toEqual({ gabc: 'G123' });
+  });
 });
