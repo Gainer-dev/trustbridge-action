@@ -10,7 +10,10 @@ import {
   xlmReservePlugin,
   corePlugins,
 } from '../src/corePlugins';
+import * as corePluginsModule from '../src/corePlugins';
 import { HorizonAccount } from '../src/horizon';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -514,6 +517,65 @@ describe('corePlugins full pipeline', () => {
       'trustbridge/xlm-reserve',
       'trustbridge/home-domain',
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// corePlugins parity with docs/PLUGIN_ARCHITECTURE.md (Issue #469)
+// ---------------------------------------------------------------------------
+
+describe('corePlugins parity with PLUGIN_ARCHITECTURE.md', () => {
+  const DOC_PATH = path.resolve(__dirname, '..', 'docs', 'PLUGIN_ARCHITECTURE.md');
+
+  /** Rows of the table between the core-plugins markers: [export, id, label]. */
+  function documentedCorePlugins(): Array<{ exportName: string; id: string; label: string }> {
+    const doc = fs.readFileSync(DOC_PATH, 'utf8');
+    const block = doc.match(/<!-- core-plugins:start -->([\s\S]*?)<!-- core-plugins:end -->/);
+    if (!block) throw new Error('core-plugins table markers missing from PLUGIN_ARCHITECTURE.md');
+    return block[1]
+      .split('\n')
+      .filter((line) => /^\|\s*`/.test(line))
+      .map((line) => {
+        const [exportName, id, label] = line
+          .split('|')
+          .slice(1, -1)
+          .map((cell) => cell.trim().replace(/^`|`$/g, ''));
+        return { exportName, id, label };
+      });
+  }
+
+  /** Every `*Plugin` export of src/corePlugins.ts. */
+  function exportedPluginNames(): string[] {
+    return Object.keys(corePluginsModule).filter((k) => k.endsWith('Plugin'));
+  }
+
+  it('documents at least one core plugin', () => {
+    expect(documentedCorePlugins().length).toBeGreaterThan(0);
+  });
+
+  it('documented ids and labels match corePlugins in order', () => {
+    const documented = documentedCorePlugins().map(({ id, label }) => ({ id, label }));
+    expect(corePlugins.map(({ id, label }) => ({ id, label }))).toEqual(documented);
+  });
+
+  it('documented export names resolve to the same plugin objects as corePlugins', () => {
+    const exportsByName = corePluginsModule as unknown as Record<string, CheckPlugin>;
+    const documented = documentedCorePlugins().map((row) => exportsByName[row.exportName]);
+    expect(documented).toEqual(corePlugins);
+  });
+
+  it('every exported *Plugin is registered in corePlugins and documented', () => {
+    const documentedNames = documentedCorePlugins().map((row) => row.exportName);
+    const exportsByName = corePluginsModule as unknown as Record<string, CheckPlugin>;
+    for (const name of exportedPluginNames()) {
+      expect(documentedNames).toContain(name);
+      expect(corePlugins).toContain(exportsByName[name]);
+    }
+  });
+
+  it('core plugin ids are unique', () => {
+    const ids = corePlugins.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });
 

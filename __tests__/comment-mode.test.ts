@@ -2,11 +2,20 @@
  * Tests for #322 — Comment threading / reply mode.
  */
 import * as core from '@actions/core';
+import * as github from '@actions/github';
 import {
   CommentMode,
   VALID_COMMENT_MODES,
   resolveCommentMode,
+  resolveDiscussionCommentTarget,
+  postDiscussionComment,
+  STICKY_COMMENT_MARKER,
 } from '../src/comment';
+
+jest.mock('@actions/github', () => ({
+  context: { payload: {}, repo: { owner: 'o', repo: 'r' }, apiUrl: 'https://api.github.com' },
+  getOctokit: jest.fn(),
+}));
 
 // Mock @actions/core to silence log output in tests
 jest.mock('@actions/core', () => ({
@@ -97,5 +106,134 @@ describe('resolveCommentMode', () => {
     expect(warnCall).toContain('sticky');
     expect(warnCall).toContain('new');
     expect(warnCall).toContain('reply');
+  });
+});
+
+// ── discussion reply threading (#472) ───────────────────────────────────────
+
+describe('resolveDiscussionCommentTarget', () => {
+  it('returns undefined for a discussion event without a comment', () => {
+    expect(resolveDiscussionCommentTarget({ discussion: { node_id: 'D_1' } })).toBeUndefined();
+    expect(resolveDiscussionCommentTarget(undefined)).toBeUndefined();
+  });
+
+  it('returns the triggering top-level comment', () => {
+    expect(
+      resolveDiscussionCommentTarget({ comment: { node_id: 'DC_top', parent_id: null } }),
+    ).toEqual({ nodeId: 'DC_top', isReply: false });
+  });
+
+  it('flags a triggering comment that is itself a reply', () => {
+    expect(
+      resolveDiscussionCommentTarget({ comment: { node_id: 'DC_child', parent_id: 42 } }),
+    ).toEqual({ nodeId: 'DC_child', isReply: true });
+  });
+});
+
+describe('postDiscussionComment threading', () => {
+  const mockedGithub = github as unknown as {
+    context: { payload: Record<string, unknown> };
+    getOctokit: jest.Mock;
+  };
+  const DISCUSSION_ID = 'D_kwDOdiscussion';
+  const emptyPage = { node: { comments: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } };
+  const added = { addDiscussionComment: { comment: { url: 'https://github.com/o/r/discussions/1#discussioncomment-9' } } };
+
+  function mockOctokit(...responses: unknown[]) {
+    const graphql = jest.fn();
+    for (const response of responses) graphql.mockResolvedValueOnce(response);
+    mockedGithub.getOctokit.mockReturnValue({ graphql });
+    return graphql;
+  }
+
+  function addMutationVariables(graphql: jest.Mock) {
+    const call = graphql.mock.calls.find(([query]) => String(query).includes('addDiscussionComment'));
+    return call?.[1];
+  }
+
+  beforeEach(() => {
+    (core.warning as jest.Mock).mockClear();
+  });
+
+  it('posts a top-level comment for discussion events (no replyToId)', async () => {
+    mockedGithub.context.payload = { discussion: { node_id: DISCUSSION_ID } };
+    const graphql = mockOctokit(emptyPage, added);
+
+    await postDiscussionComment('token', 'body');
+
+    expect(addMutationVariables(graphql)).toEqual({ discussionId: DISCUSSION_ID, body: 'body', replyToId: null });
+  });
+
+  it('replies under the triggering top-level comment for discussion_comment events', async () => {
+    mockedGithub.context.payload = {
+      discussion: { node_id: DISCUSSION_ID },
+      comment: { node_id: 'DC_top', parent_id: null },
+    };
+    const graphql = mockOctokit(emptyPage, added);
+
+    await postDiscussionComment('token', 'body');
+
+    expect(addMutationVariables(graphql)).toMatchObject({ discussionId: DISCUSSION_ID, replyToId: 'DC_top' });
+    // Sticky lookup is scoped to the thread's replies, not the whole discussion.
+    const [lookupQuery, lookupVars] = graphql.mock.calls[0];
+    expect(lookupQuery).toContain('replies(first: 100');
+    expect(lookupVars).toMatchObject({ discussionId: 'DC_top' });
+  });
+
+  it('replies under the parent thread when the triggering comment is itself a reply', async () => {
+    mockedGithub.context.payload = {
+      discussion: { node_id: DISCUSSION_ID },
+      comment: { node_id: 'DC_child', parent_id: 7 },
+    };
+    const graphql = mockOctokit({ node: { replyTo: { id: 'DC_parent' } } }, emptyPage, added);
+
+    await postDiscussionComment('token', 'body');
+
+    expect(graphql.mock.calls[0][1]).toEqual({ commentId: 'DC_child' });
+    expect(addMutationVariables(graphql)).toMatchObject({ replyToId: 'DC_parent' });
+  });
+
+  it('updates the existing TrustBridge reply in the same thread when sticky', async () => {
+    mockedGithub.context.payload = {
+      discussion: { node_id: DISCUSSION_ID },
+      comment: { node_id: 'DC_top', parent_id: null },
+    };
+    const existing = { id: 'DC_bot_reply', body: `${STICKY_COMMENT_MARKER}\nold` };
+    const graphql = mockOctokit(
+      { node: { comments: { nodes: [existing], pageInfo: { hasNextPage: false, endCursor: null } } } },
+      { updateDiscussionComment: { comment: { url: 'https://github.com/o/r/discussions/1#discussioncomment-8' } } },
+    );
+
+    const url = await postDiscussionComment('token', 'new body', { sticky: true });
+
+    expect(url).toBe('https://github.com/o/r/discussions/1#discussioncomment-8');
+    expect(graphql.mock.calls[1][1]).toEqual({ commentId: 'DC_bot_reply', body: 'new body' });
+    expect(addMutationVariables(graphql)).toBeUndefined();
+  });
+
+  it('honours an explicit replyToId without resolving from the payload', async () => {
+    mockedGithub.context.payload = { discussion: { node_id: DISCUSSION_ID } };
+    const graphql = mockOctokit(emptyPage, added);
+
+    await postDiscussionComment('token', 'body', { replyToId: 'DC_explicit' });
+
+    expect(addMutationVariables(graphql)).toMatchObject({ replyToId: 'DC_explicit' });
+  });
+
+  it('falls back to a top-level comment with a warning when the parent lookup fails', async () => {
+    mockedGithub.context.payload = {
+      discussion: { node_id: DISCUSSION_ID },
+      comment: { node_id: 'DC_child', parent_id: 7 },
+    };
+    const graphql = jest.fn()
+      .mockRejectedValueOnce(new Error('NOT_FOUND'))
+      .mockResolvedValueOnce(emptyPage)
+      .mockResolvedValueOnce(added);
+    mockedGithub.getOctokit.mockReturnValue({ graphql });
+
+    await postDiscussionComment('token', 'body');
+
+    expect(addMutationVariables(graphql)).toMatchObject({ replyToId: null });
+    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('DC_child'));
   });
 });

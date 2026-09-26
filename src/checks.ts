@@ -806,6 +806,41 @@ export function formatAssetDeficit(required: number, actual: number): string {
   return Math.max(0, required - actual).toFixed(7);
 }
 
+/** Stellar amounts have 7 decimal places: 1 unit = 10,000,000 stroops. */
+export const STROOPS_PER_UNIT = 10_000_000n;
+
+/**
+ * Convert a non-negative decimal amount (Horizon balance string or
+ * `min_asset_balance` value) to integer stroops without floating-point math.
+ *
+ * Digits beyond the 7th decimal are dropped (`'floor'`) or rounded up to the
+ * next stroop (`'ceil'`). Because balances are whole stroops,
+ * `balance >= threshold` is equivalent to `balance >= ceil(threshold)`.
+ * Unparseable values yield `0n`, matching `parseHorizonBalance`.
+ */
+export function toStroops(value: string | number, rounding: 'floor' | 'ceil' = 'floor'): bigint {
+  let text = String(value).trim();
+  if (/e/i.test(text)) {
+    // Exponent notation (e.g. `1e-8`) — expand to a plain decimal string.
+    const parsed = Number(text);
+    text = Number.isFinite(parsed) ? parsed.toFixed(20) : '';
+  }
+  const match = /^(\d*)(?:\.(\d*))?$/.exec(text);
+  if (!match || (match[1] === '' && !match[2])) return 0n;
+
+  const fraction = match[2] ?? '';
+  let stroops = BigInt(match[1] || '0') * STROOPS_PER_UNIT + BigInt(fraction.slice(0, 7).padEnd(7, '0'));
+  if (rounding === 'ceil' && /[1-9]/.test(fraction.slice(7))) stroops += 1n;
+  return stroops;
+}
+
+/** Format integer stroops as a 7-decimal amount string, e.g. `15000000n` → `'1.5000000'`. */
+export function formatStroops(stroops: bigint): string {
+  const whole = stroops / STROOPS_PER_UNIT;
+  const fraction = (stroops % STROOPS_PER_UNIT).toString().padStart(7, '0');
+  return `${whole}.${fraction}`;
+}
+
 /**
  * Renders the sponsor-aware reserve math behind a `ReserveRequirement` as a
  * short human-readable clause, e.g.
@@ -868,11 +903,15 @@ export function runAccountChecks(
     config.assetCode,
     config.assetIssuer,
   );
-  const assetBalanceNumeric = parseHorizonBalance(assetBalanceRaw);
   const minAssetBalanceRequired = Number(config.minAssetBalance ?? 0);
-  const assetBalanceCheckEnabled = minAssetBalanceRequired > 0;
-  const assetBalanceMet =
-    !assetBalanceCheckEnabled || assetBalanceNumeric >= minAssetBalanceRequired;
+  // Issue #476: compare in integer stroops so large balances and thresholds
+  // with more than 7 decimals never round across the boundary.
+  const assetBalanceRequirement = buildAssetBalanceRequirement(
+    toStroops(config.minAssetBalance ?? 0, 'ceil'),
+    toStroops(assetBalanceRaw),
+  );
+  const assetBalanceCheckEnabled = assetBalanceRequirement.required > 0n;
+  const assetBalanceMet = !assetBalanceCheckEnabled || assetBalanceRequirement.met;
 
   const safeAssetCode = escapeMarkdownInline(config.assetCode);
   const reserveExplanation = explainReserveRequirement(reserveRequirement);
@@ -940,7 +979,7 @@ export function runAccountChecks(
     const assetBalanceCheckDetail = trustlineExists
       ? assetBalanceMet
         ? `Balance **${inlineCode(assetBalanceRaw)} ${safeAssetCode}** meets the minimum of **${minAssetBalanceRequired} ${safeAssetCode}**.`
-        : `Balance **${inlineCode(assetBalanceRaw)} ${safeAssetCode}** is below the required **${minAssetBalanceRequired} ${safeAssetCode}**. Deficit: **${formatAssetDeficit(minAssetBalanceRequired, assetBalanceNumeric)} ${safeAssetCode}**.`
+        : `Balance **${inlineCode(assetBalanceRaw)} ${safeAssetCode}** is below the required **${minAssetBalanceRequired} ${safeAssetCode}**. Deficit: **${assetBalanceRequirement.missing} ${safeAssetCode}**.`
       : `Cannot verify ${safeAssetCode} balance â€” trustline is not configured yet.`;
     checks.push({
       passed: assetBalanceMet || !trustlineExists,
@@ -1023,7 +1062,7 @@ export function runAccountChecks(
       }
       if (assetBalanceCheckEnabled && !assetBalanceMet && trustlineExists) {
         steps.push(
-          `Acquire at least **${formatAssetDeficit(minAssetBalanceRequired, assetBalanceNumeric)} ${safeAssetCode}** to meet the minimum asset balance requirement of **${minAssetBalanceRequired} ${safeAssetCode}**.`,
+          `Acquire at least **${assetBalanceRequirement.missing} ${safeAssetCode}** to meet the minimum asset balance requirement of **${minAssetBalanceRequired} ${safeAssetCode}**.`,
         );
       }
       if (clawbackBlocks) {
@@ -1853,7 +1892,7 @@ export function buildAssetBalanceRequirement(
   return {
     required,
     actual,
-    missing: formatAssetDeficit(Number(required) / 1e7, Number(actual) / 1e7),
+    missing: formatStroops(met ? 0n : required - actual),
     met,
   };
 }

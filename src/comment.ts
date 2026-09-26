@@ -1117,12 +1117,49 @@ export function resolveDiscussionNodeId(payload: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * The discussion comment that triggered a `discussion_comment` event, as
+ * needed to thread TrustBridge's reply (Issue #472).
+ *
+ * - `nodeId`: GraphQL node id of the triggering comment.
+ * - `isReply`: true when the triggering comment is itself a reply
+ *   (`comment.parent_id` is set). GitHub Discussions allow only one level of
+ *   replies, so the reply must then target the triggering comment's parent.
+ *
+ * Returns `undefined` for events without a comment (e.g. `discussion`),
+ * where TrustBridge posts a top-level comment.
+ *
+ * @internal Exported for testing.
+ */
+export function resolveDiscussionCommentTarget(
+  payload: unknown,
+): { nodeId: string; isReply: boolean } | undefined {
+  if (payload && typeof payload === "object") {
+    const comment = (payload as { comment?: { node_id?: unknown; parent_id?: unknown } }).comment;
+    const nodeId = comment?.node_id;
+    if (typeof nodeId === "string" && nodeId.trim()) {
+      return {
+        nodeId: nodeId.trim(),
+        isReply: comment?.parent_id !== undefined && comment?.parent_id !== null,
+      };
+    }
+  }
+  return undefined;
+}
+
 export interface UpsertDiscussionCommentOptions extends UpsertCommentOptions {
   /**
    * Explicit discussion node id (e.g. "DIC_kw..."). When omitted, the id is
    * resolved from `github.context.payload.discussion.node_id`.
    */
   discussionId?: string;
+  /**
+   * Node id of the top-level discussion comment to reply under (Issue #472).
+   * When omitted, it is resolved from a `discussion_comment` event payload:
+   * the triggering comment, or its parent when it is itself a reply. Other
+   * events post a top-level comment.
+   */
+  replyToId?: string;
 }
 
 interface DiscussionCommentNode {
@@ -1159,14 +1196,18 @@ interface DiscussionCommentMutationResult {
 export async function findStickyDiscussionComment(
   octokit: Octokit,
   discussionId: string,
-  options: FindStickyCommentOptions = {},
+  options: FindStickyCommentOptions & { replyToId?: string } = {},
 ): Promise<DiscussionCommentNode | undefined> {
   const maxPages = options.maxPages ?? MAX_STICKY_COMMENT_SEARCH_PAGES;
+  // When threading (Issue #472), search the replies of the thread's top-level
+  // comment so each thread keeps its own sticky comment.
+  const selection = options.replyToId
+    ? '... on DiscussionComment {\n          comments: replies(first: 100, after: $cursor) {'
+    : '... on Discussion {\n          comments(first: 100, after: $cursor) {';
   const query = `
     query FindTrustBridgeDiscussionComment($discussionId: ID!, $cursor: String) {
       node(id: $discussionId) {
-        ... on Discussion {
-          comments(first: 100, after: $cursor) {
+        ${selection}
             nodes {
               id
               body
@@ -1197,7 +1238,7 @@ export async function findStickyDiscussionComment(
   while (pageCount < maxPages) {
     pageCount++;
     const data = (await octokit.graphql(query, {
-      discussionId,
+      discussionId: options.replyToId ?? discussionId,
       cursor,
     })) as DiscussionCommentsPage;
 
@@ -1226,6 +1267,47 @@ export async function findStickyDiscussionComment(
 }
 
 /**
+ * Resolve the top-level comment a reply should thread under for a
+ * `discussion_comment` event (Issue #472).
+ *
+ * A top-level triggering comment is used directly. When the triggering
+ * comment is itself a reply, its parent is looked up via GraphQL (`replyTo`),
+ * because GitHub rejects replies to replies. If that lookup fails, the reply
+ * falls back to a top-level comment rather than failing the run.
+ */
+async function resolveDiscussionReplyToId(
+  octokit: Octokit,
+  payload: unknown,
+): Promise<string | undefined> {
+  const target = resolveDiscussionCommentTarget(payload);
+  if (!target) return undefined;
+  if (!target.isReply) return target.nodeId;
+
+  try {
+    const data = (await octokit.graphql(
+      `query TrustBridgeDiscussionReplyParent($commentId: ID!) {
+        node(id: $commentId) {
+          ... on DiscussionComment { replyTo { id } }
+        }
+      }`,
+      { commentId: target.nodeId },
+    )) as { node?: { replyTo?: { id?: string } | null } | null };
+    const parentId = data?.node?.replyTo?.id;
+    if (parentId) return parentId;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    core.warning(
+      `Could not resolve the parent thread of discussion comment ${target.nodeId}, posting a top-level comment instead: ${message}`,
+    );
+    return undefined;
+  }
+  core.warning(
+    `Discussion comment ${target.nodeId} has no resolvable parent thread; posting a top-level comment instead.`,
+  );
+  return undefined;
+}
+
+/**
  * Post (or sticky-upsert) a TrustBridge comment on a GitHub Discussion via
  * the GraphQL API.
  *
@@ -1234,6 +1316,10 @@ export async function findStickyDiscussionComment(
  * TrustBridge comment on the discussion is updated in place via
  * `updateDiscussionComment`; otherwise a new comment is created via
  * `addDiscussionComment`.
+ *
+ * On `discussion_comment` events the comment is threaded under the triggering
+ * comment's top-level thread (`replyToId`), and the sticky lookup is scoped to
+ * that thread's replies (Issue #472).
  *
  * Requires `discussions: write` permission on the workflow token (documented
  * in docs/USAGE.md). A missing permission surfaces as a GraphQL mutation
@@ -1265,12 +1351,17 @@ export async function postDiscussionComment(
   const proxyOpts2 = getOctokitProxyOptions(context.apiUrl);
   const octokit = github.getOctokit(token, { baseUrl: context.apiUrl, ...proxyOpts2 });
 
+  const replyToId =
+    options.replyToId ??
+    (await resolveDiscussionReplyToId(octokit, context.payload));
+
   let existingComment: DiscussionCommentNode | undefined;
   if (sticky) {
     try {
       existingComment = await findStickyDiscussionComment(
         octokit,
         discussionId,
+        { replyToId },
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1325,14 +1416,18 @@ export async function postDiscussionComment(
   }
 
   const data = (await octokit.graphql(
-    `mutation AddTrustBridgeDiscussionComment($discussionId: ID!, $body: String!) {
-      addDiscussionComment(input: { discussionId: $discussionId, body: $body }) {
+    `mutation AddTrustBridgeDiscussionComment($discussionId: ID!, $body: String!, $replyToId: ID) {
+      addDiscussionComment(input: { discussionId: $discussionId, body: $body, replyToId: $replyToId }) {
         comment { id url }
       }
     }`,
-    { discussionId, body },
+    { discussionId, body, replyToId: replyToId ?? null },
   )) as DiscussionCommentMutationResult;
 
-  core.info(`Posted TrustBridge comment on discussion ${discussionId}.`);
+  core.info(
+    replyToId
+      ? `Posted TrustBridge reply in thread ${replyToId} on discussion ${discussionId}.`
+      : `Posted TrustBridge comment on discussion ${discussionId}.`,
+  );
   return data.addDiscussionComment?.comment.url;
 }

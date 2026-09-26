@@ -46,6 +46,32 @@ interface CheckPluginResult {
 
 ---
 
+## Core plugins
+
+`src/corePlugins.ts` exports these built-in plugins. `corePlugins` lists them in this order, which is the order they appear in the comment table.
+
+<!-- core-plugins:start -->
+| Export | Plugin id | Label |
+| ------ | --------- | ----- |
+| `accountFundedPlugin` | `trustbridge/account-funded` | Account funded |
+| `trustlinePlugin` | `trustbridge/trustline` | Trustline |
+| `xlmReservePlugin` | `trustbridge/xlm-reserve` | XLM reserve |
+| `homeDomainPlugin` | `trustbridge/home-domain` | SEP-0001 home domain |
+<!-- core-plugins:end -->
+
+`__tests__/plugin.test.ts` parses this table and fails when it drifts from `corePlugins`. When adding a core plugin, export it from `src/corePlugins.ts`, append it to `corePlugins`, and add a row here in the same change.
+
+---
+
+## Loading external plugins
+
+`loadPluginsFromAllowlist()` loads each allowlisted path with `loadPlugin()`:
+
+- A missing file, a failed import, or an export without `id`, `label` and `run()` throws `PluginLoadError` (`not_found`, `load_failed`, `invalid_export`). The allowlist loader logs a warning and skips that plugin (fail-open).
+- Two allowlisted plugins that export the same `id` throw `PluginLoadError` with reason `duplicate_id`, naming both paths. The action then warns and continues with core plugins only, rather than silently dropping one of them.
+
+---
+
 ## Security
 
 Plugins must not execute arbitrary code sourced from issue bodies.
@@ -81,10 +107,10 @@ src/
   plugin.ts         - CheckPlugin, CheckPluginContext, CheckPluginResult, PluginRegistry
   pluginRunner.ts   - runPlugins(ctx, registry?) -> ValidationResult
   pluginLoader.ts   - workspace-only plugin loader with allowlist + path guards
-  corePlugins.ts    - accountFundedPlugin, trustlinePlugin, xlmReservePlugin
+  corePlugins.ts    - accountFundedPlugin, trustlinePlugin, xlmReservePlugin, homeDomainPlugin
 __tests__/
   plugin.test.ts    - registry, runner, core plugins, security contract
-  plugin-loader.test.ts - loader path guards and allowlist behavior
+  plugin-loader.test.ts - loader path guards, allowlist, load failures, duplicate ids
 docs/
   PLUGIN_ARCHITECTURE.md - this document
 ```
