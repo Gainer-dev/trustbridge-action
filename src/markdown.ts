@@ -12,12 +12,7 @@ export function inlineCode(value: string): string {
   return `\`${value.replace(/`/g, '\\`')}\``;
 }
 
-/**
- * Base URL for FAQ anchors linked from the onboarding checklist.
- * Points to docs/FAQ.md in the trustbridge-action repository.
- * @deprecated Use DEFAULT_FAQ_BASE_URL from links.ts directly.
- */
-export const TROUBLESHOOTING_FAQ_BASE = DEFAULT_FAQ_BASE_URL;
+
 
 /**
  * The fixed set of checklist label keys used in the onboarding checklist.
