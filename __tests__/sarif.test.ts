@@ -7,7 +7,8 @@ import {
   checkLabelToRuleId,
   checkToSarifResult,
 } from '../src/sarif';
-import { ValidationResult, CheckResultItem } from '../src/checks';
+import { ValidationResult, CheckResultItem, runAccountChecks } from '../src/checks';
+import { HorizonAccount } from '../src/horizon';
 
 describe('SARIF output generation', () => {
   const mockValidationResult: ValidationResult = {
@@ -49,6 +50,7 @@ describe('SARIF output generation', () => {
       expect(ruleIds).toContain('TB002'); // Trustline
       expect(ruleIds).toContain('TB003'); // XLM reserve
       expect(ruleIds).toContain('TB004'); // Horizon availability
+      expect(ruleIds).toContain('TB005'); // Clawback safety
     });
 
     it('each rule has required fields', () => {
@@ -107,6 +109,10 @@ describe('SARIF output generation', () => {
 
     it('maps "Horizon availability" to TB004', () => {
       expect(checkLabelToRuleId('Horizon availability')).toBe('TB004');
+    });
+
+    it('maps clawback checks to TB005', () => {
+      expect(checkLabelToRuleId('USDC clawback safety')).toBe('TB005');
     });
 
     it('returns TB000 for unknown labels', () => {
@@ -368,5 +374,42 @@ describe('SARIF output generation', () => {
       delete sarif.runs[0].results;
       expect(validateSarifSchema(sarif)).toBe(false);
     });
+  });
+});
+
+describe('SARIF clawback findings (Issue #474)', () => {
+  const ISSUER = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
+  const ADDRESS = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
+  const account: HorizonAccount = {
+    id: ADDRESS,
+    account_id: ADDRESS,
+    sequence: '1',
+    subentry_count: 1,
+    num_sponsoring: 0,
+    num_sponsored: 0,
+    balances: [
+      { balance: '10.0000000', asset_type: 'native', buying_liabilities: '0.0000000', selling_liabilities: '0.0000000' },
+      {
+        balance: '100.0000000', asset_type: 'credit_alphanum4', asset_code: 'USDC', asset_issuer: ISSUER,
+        buying_liabilities: '0.0000000', selling_liabilities: '0.0000000', is_clawback_enabled: true,
+      },
+    ],
+  };
+
+  it('emits the clawback check from runAccountChecks under stable rule TB005', async () => {
+    const result = await runAccountChecks(account, {
+      assetCode: 'USDC',
+      assetIssuer: ISSUER,
+      minXlmReserve: 1.5,
+      clawbackStrictMode: true,
+    });
+    const sarif: any = buildSarifOutput(result, 'USDC', 'https://horizon.stellar.org', ADDRESS);
+    const run = sarif.runs[0];
+
+    const clawbackResult = run.results.find((r: any) => r.properties.checkLabel.includes('clawback'));
+    expect(clawbackResult).toBeDefined();
+    expect(clawbackResult.ruleId).toBe('TB005');
+    expect(clawbackResult.level).toBe('error');
+    expect(run.tool.driver.rules.map((r: any) => r.id)).toContain('TB005');
   });
 });

@@ -1824,7 +1824,7 @@ steps:
 
 The SARIF file includes:
 
-- **Rule definitions** — TB001 (account funded), TB002 (trustline), TB003 (XLM reserve), TB004 (Horizon availability)
+- **Rule definitions** — TB001 (account funded), TB002 (trustline), TB003 (XLM reserve), TB004 (Horizon availability), TB005 (clawback safety)
 - **Severity levels** — Passed checks appear as `note`, failed checks as `error`
 - **Validation gate summary** — Total/passed/failed check counts in run properties
 - **Locations** — Links to the Horizon endpoint and checked account address
@@ -1837,6 +1837,7 @@ The SARIF file includes:
 | TB002   | Asset trustline      | [Trustlines](https://developers.stellar.org/docs/fundamentals-and-concepts/stellar-data-structures/account-data#trustlines) |
 | TB003   | XLM reserve          | [Reserves & Fees](https://developers.stellar.org/docs/learn/fundamentals/fees-and-metering#reserve)                         |
 | TB004   | Horizon availability | [Horizon API](https://developers.stellar.org/docs/data/apis/horizon)                                                        |
+| TB005   | Clawback safety      | [Clawback](https://developers.stellar.org/docs/tokens/control-asset-access#clawback-enabled-0x8) — emitted when `clawback_strict_mode: true` blocks a clawback-enabled trustline |
 
 ---
 
@@ -2973,6 +2974,17 @@ The minted GitHub OIDC token contains standard JWT claims that the receiver vali
 - **Never logged:** The action registers the minted OIDC token with `core.setSecret()` to prevent accidental exposure in runner logs.
 - **HMAC remains default:** Workflows without `webhook_auth_mode: oidc` continue using HMAC-SHA256 signing transparently.
 - **Fail-open delivery:** OIDC token errors or network timeouts log non-fatal warnings and never block comment posting or validation results.
+
+### Troubleshooting OIDC
+
+| Symptom | Likely cause | Fix |
+| ------- | ------------ | --- |
+| `OIDC token minting failed ... Ensure the workflow has 'permissions: id-token: write'` | Job lacks `id-token: write`, or the run is a fork `pull_request` | Add `id-token: write` to the job `permissions:`; use HMAC mode for fork-triggered runs |
+| Receiver returns `401`/`403` with an invalid `aud` claim | `webhook_oidc_audience` differs from the audience the receiver accepts | Set both to the exact same string (default `trustbridge-dashboard`) |
+| Receiver reports a missing or invalid `X-TrustBridge-Signature` | Receiver verifies HMAC while the action runs in OIDC mode (no signature header is sent) | Verify the bearer JWT on the receiver, or switch the action back to `webhook_auth_mode: hmac` |
+| Tokens rejected only on GHES | Receiver trusts only `https://token.actions.githubusercontent.com` | Trust `https://<your-ghes-host>/_services/token` (GHES 3.8+); see [GHES_COMPATIBILITY.md](GHES_COMPATIBILITY.md) |
+
+See the [FAQ](FAQ.md#oidc-webhook-troubleshooting) for details on each case.
 
 ---
 

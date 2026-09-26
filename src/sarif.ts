@@ -95,6 +95,20 @@ export function buildSarifRules(): SarifRule[] {
         precision: 'high',
       },
     },
+    {
+      id: 'TB005',
+      shortDescription: {
+        text: 'Asset trustline does not have clawback enabled',
+      },
+      fullDescription: {
+        text: 'The issuer can reclaim clawback-enabled assets at any time. Emitted when clawback_strict_mode blocks a clawback-enabled trustline.',
+      },
+      helpUri: 'https://developers.stellar.org/docs/tokens/control-asset-access#clawback-enabled-0x8',
+      properties: {
+        tags: ['trustbridge', 'stellar', 'wallet-readiness', 'clawback'],
+        precision: 'high',
+      },
+    },
   ];
 }
 
@@ -110,6 +124,8 @@ export function checkToSarifLevel(check: CheckResultItem): SarifLevel {
  */
 export function checkLabelToRuleId(label: string): string {
   if (label.includes('Account funded')) return 'TB001';
+  // Checked before 'trustline' so clawback labels never fall into TB002.
+  if (label.includes('clawback')) return 'TB005';
   if (label.includes('trustline')) return 'TB002';
   if (label.includes('XLM reserve')) return 'TB003';
   if (label.includes('Horizon availability')) return 'TB004';
