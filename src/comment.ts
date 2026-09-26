@@ -174,10 +174,13 @@ export function formatCommentBody(
       `${strings.checkedAccount} ${inlineCode(config.stellarAddress)}`,
       `${strings.horizon} ${inlineCode(config.horizonUrl)}`,
       `${strings.asset} **${config.assetCode}** · Issuer: ${inlineCode(config.assetIssuer)}`,
+    ];
+
+    lines.push(
       "",
       `### ${strings.resultsHeading}`,
       "",
-    ];
+    );
 
     for (const check of result.checks) {
       // Append a FAQ deep link for failing checks so contributors land on the
@@ -192,17 +195,6 @@ export function formatCommentBody(
       }
       lines.push(
         `- ${statusIcon(check.passed)} **${check.label}** — ${check.detail}${faqSuffix}`,
-      );
-    }
-
-    // Onboarding checklist (Issue #154) — default on unless explicitly disabled.
-    if (config.onboardingChecklist !== false) {
-      lines.push(
-        "",
-        buildOnboardingChecklist(result, {
-          assetCode: config.assetCode,
-          minXlmReserve: config.minXlmReserve,
-        }),
       );
     }
 

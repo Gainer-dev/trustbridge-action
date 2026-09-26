@@ -227,7 +227,8 @@ Initial public release. No breaking changes from a prior major.
 
 ### v1 → v2 (placeholder)
 
-> _Not yet released. This section will be populated when the first breaking change is introduced._
+> _These breaking changes will take effect in the upcoming v2 release._
+- **Removed Export**: Removed deprecated `TROUBLESHOOTING_FAQ_BASE` from `src/markdown.ts`. Use `DEFAULT_FAQ_BASE_URL` from `src/links.ts` directly.
 
 ---
 
