@@ -711,5 +711,5 @@ Built for the Stellar open-source ecosystem. Horizon data provided by the [Stell
 
 ## Handsoff notes
 
-<!-- handsoff-issue-497 -->
-- #497: Add CONTRIBUTING scripts cheat-sheet
+<!-- handsoff-issue-493 -->
+- #493: Align org-defaults composite with root action inputs

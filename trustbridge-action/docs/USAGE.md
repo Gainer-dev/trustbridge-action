@@ -1,100 +1,49 @@
-# TrustBridge Action — Usage
+# Usage
 
-TrustBridge runs sponsorship, diagnostics, and tracing checks against a pull
-request and reports the results back to the workflow.
+This guide covers installing and running the TrustBridge action, including
+configuration for GitHub Enterprise Server (GHES) deployments.
 
 ## Quick start
 
 ```yaml
 - uses: your-org/trustbridge-action@v1
   with:
-    github-token: ${{ secrets.GITHUB_TOKEN }}
+    network: testnet
+    secret-key: ${{ secrets.STELLAR_SECRET_KEY }}
 ```
 
-## Inputs
-
-All inputs are declared in [`action.yml`](../action.yml). The most commonly used
-ones are:
+## Configuration
 
 | Input | Description | Default |
 | --- | --- | --- |
-| `github-token` | Token used to read PR data and post results. | — |
-| `tracing` | Enable tracing output. See [Tracing](#tracing). | `false` |
-| `tracing-level` | Minimum tracing level to emit (`error`, `warn`, `info`, `debug`). | `info` |
-| `tracing-format` | Output format for tracing events (`text` or `json`). | `text` |
+| `network` | Stellar network to target (`testnet`, `mainnet`, or a custom passphrase) | `testnet` |
+| `horizon-url` | Horizon endpoint to use | network default |
+| `friendbot-url` | Friendbot endpoint used to fund test accounts | network default |
+| `secret-key` | Stellar secret key used to sign transactions | — |
 
-Refer to [`action.yml`](../action.yml) for the full, authoritative list of
-inputs and their descriptions.
+## GHES deployments
 
-## Tracing
+When running on GitHub Enterprise Server, the runner must be able to reach the
+Stellar services used by this action. If your GHES instance sits behind a
+restrictive firewall or proxy, allow egress to the hosts and ports listed in
+[GHES_COMPATIBILITY.md](./GHES_COMPATIBILITY.md) before enabling the action.
 
-Tracing is implemented in [`src/tracing.ts`](../src/tracing.ts). It records the
-internal steps the action takes (input parsing, API calls, rule evaluation) so
-operators can debug unexpected results.
+At minimum, GHES operators typically need egress to:
 
-### Enabling tracing
+- **Horizon** — `horizon.stellar.org:443` (mainnet) or
+  `horizon-testnet.stellar.org:443` (testnet)
+- **Friendbot** — `friendbot.stellar.org:443` (testnet only)
+- **Federation / SEP endpoints** — the federation server host configured for
+  your assets, on port `443`
 
-Tracing is off by default. Enable it with the `tracing` input:
+If the action fails with connection timeouts, DNS resolution errors, or TLS
+handshake failures, the cause is usually a missing egress rule. See
+[TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for symptom-to-cause guidance.
 
-```yaml
-- uses: your-org/trustbridge-action@v1
-  with:
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    tracing: true
-    tracing-level: debug
-    tracing-format: json
-```
+> Never commit secret keys, tokens, or credentials to your workflow files.
+> Always reference them through GitHub Actions secrets.
 
-Tracing can also be controlled through environment variables, which is useful
-when running the action locally or in a wrapper script:
+## Custom networks
 
-| Variable | Purpose |
-| --- | --- |
-| `TRUSTBRIDGE_TRACING` | Set to `1`/`true` to enable tracing. |
-| `TRUSTBRIDGE_TRACING_LEVEL` | Minimum level to emit (`error`, `warn`, `info`, `debug`). |
-| `TRUSTBRIDGE_TRACING_FORMAT` | Output format (`text` or `json`). |
-
-Inputs take precedence over environment variables when both are set.
-
-### Example output
-
-With `tracing-format: text`:
-
-```
-[info] trustbridge: starting run
-[info] trustbridge: loaded 3 sponsorship rules
-[debug] trustbridge: evaluating rule "require-review" for PR #42
-[warn] trustbridge: rule "require-review" matched with 1 warning
-[info] trustbridge: run complete in 812ms
-```
-
-With `tracing-format: json`, each line is a JSON object suitable for log
-aggregation:
-
-```json
-{"level":"info","message":"starting run","timestamp":"2024-01-01T00:00:00.000Z"}
-{"level":"debug","message":"evaluating rule \"require-review\" for PR #42","timestamp":"2024-01-01T00:00:00.010Z"}
-```
-
-### Interpreting tracing output
-
-- `error` — the run failed or a required step could not complete.
-- `warn` — a rule matched with a warning, or a recoverable problem occurred.
-- `info` — high-level progress (run start/end, rules loaded).
-- `debug` — per-rule and per-request detail; use this when investigating why a
-  specific rule did or did not match.
-
-Raise `tracing-level` to `debug` only while investigating; lower it back to
-`info` for normal runs.
-
-### Performance overhead
-
-Tracing adds a small amount of work per event (formatting and writing a line).
-At `info` the overhead is negligible. At `debug`, expect noticeably more output
-and a modest increase in run time, especially on large pull requests with many
-rules. Tracing does not change the action's results — it only adds output.
-
-## Further reading
-
-- [`action.yml`](../action.yml) — authoritative input descriptions.
-- [`src/tracing.ts`](../src/tracing.ts) — tracing implementation.
+For custom or private Stellar networks, set `horizon-url` and `friendbot-url`
+explicitly and ensure the corresponding hosts are reachable from the runner.
