@@ -1,83 +1,100 @@
 # TrustBridge Action — Usage
 
-TrustBridge validates trust artifacts (SBOMs, provenance, attestations) and can
-emit **delta exports** — ZIP bundles that contain only the artifacts that
-changed since a previous run.
+TrustBridge runs sponsorship, diagnostics, and tracing checks against a pull
+request and reports the results back to the workflow.
 
-## Basic usage
-
-```yaml
-- uses: your-org/trustbridge-action@v1
-  with:
-    mode: validate
-    path: ./artifacts
-```
-
-## Delta exports
-
-Delta exports are produced when `delta: true` is set. The action compares the
-current artifact set against the last recorded state and writes a ZIP containing
-only the changed entries.
+## Quick start
 
 ```yaml
 - uses: your-org/trustbridge-action@v1
   with:
-    mode: validate
-    path: ./artifacts
-    delta: true
-    delta-output: ./delta.zip
+    github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-### `privacy_mode` and delta redaction
+## Inputs
 
-`privacy_mode` controls how much sensitive content is written into delta ZIPs
-and their contents. It applies to **every** delta flow (interactive runs and
-scheduled revalidation).
+All inputs are declared in [`action.yml`](../action.yml). The most commonly used
+ones are:
 
-| `privacy_mode` | Delta ZIP contents | Notes |
+| Input | Description | Default |
 | --- | --- | --- |
-| `off` (default) | Full artifact contents, including any embedded PII, paths, and metadata. | Safe only for private/internal artifacts. |
-| `redact` | Sensitive fields are replaced with `[REDACTED]`; file names and structure are preserved. | Recommended for shared or uploaded artifacts. |
-| `hash` | Sensitive fields are replaced with a stable hash; contents are not recoverable. | Use when you need to compare without exposing values. |
+| `github-token` | Token used to read PR data and post results. | — |
+| `tracing` | Enable tracing output. See [Tracing](#tracing). | `false` |
+| `tracing-level` | Minimum tracing level to emit (`error`, `warn`, `info`, `debug`). | `info` |
+| `tracing-format` | Output format for tracing events (`text` or `json`). | `text` |
 
-> **Warning:** with `privacy_mode: off`, delta ZIPs may contain PII. Only
-> publish or upload delta artifacts when you have confirmed the source
-> artifacts are safe to share.
+Refer to [`action.yml`](../action.yml) for the full, authoritative list of
+inputs and their descriptions.
 
-### Examples
+## Tracing
 
-**Safe (non-redacted) delta output** — `privacy_mode: off`:
+Tracing is implemented in [`src/tracing.ts`](../src/tracing.ts). It records the
+internal steps the action takes (input parsing, API calls, rule evaluation) so
+operators can debug unexpected results.
 
-```json
-{
-  "component": "payments-api",
-  "author": "jane.doe@example.com",
-  "path": "/home/jane/src/payments-api",
-  "license": "Apache-2.0"
-}
+### Enabling tracing
+
+Tracing is off by default. Enable it with the `tracing` input:
+
+```yaml
+- uses: your-org/trustbridge-action@v1
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    tracing: true
+    tracing-level: debug
+    tracing-format: json
 ```
 
-**Redacted delta output** — `privacy_mode: redact`:
+Tracing can also be controlled through environment variables, which is useful
+when running the action locally or in a wrapper script:
 
-```json
-{
-  "component": "payments-api",
-  "author": "[REDACTED]",
-  "path": "[REDACTED]",
-  "license": "Apache-2.0"
-}
+| Variable | Purpose |
+| --- | --- |
+| `TRUSTBRIDGE_TRACING` | Set to `1`/`true` to enable tracing. |
+| `TRUSTBRIDGE_TRACING_LEVEL` | Minimum level to emit (`error`, `warn`, `info`, `debug`). |
+| `TRUSTBRIDGE_TRACING_FORMAT` | Output format (`text` or `json`). |
+
+Inputs take precedence over environment variables when both are set.
+
+### Example output
+
+With `tracing-format: text`:
+
+```
+[info] trustbridge: starting run
+[info] trustbridge: loaded 3 sponsorship rules
+[debug] trustbridge: evaluating rule "require-review" for PR #42
+[warn] trustbridge: rule "require-review" matched with 1 warning
+[info] trustbridge: run complete in 812ms
 ```
 
-**Hashed delta output** — `privacy_mode: hash`:
+With `tracing-format: json`, each line is a JSON object suitable for log
+aggregation:
 
 ```json
-{
-  "component": "payments-api",
-  "author": "sha256:9f2c…",
-  "path": "sha256:1a7b…",
-  "license": "Apache-2.0"
-}
+{"level":"info","message":"starting run","timestamp":"2024-01-01T00:00:00.000Z"}
+{"level":"debug","message":"evaluating rule \"require-review\" for PR #42","timestamp":"2024-01-01T00:00:00.010Z"}
 ```
 
-See `docs/CRON_REVALIDATION.md` for how `privacy_mode` behaves in scheduled
-revalidation delta flows.
+### Interpreting tracing output
+
+- `error` — the run failed or a required step could not complete.
+- `warn` — a rule matched with a warning, or a recoverable problem occurred.
+- `info` — high-level progress (run start/end, rules loaded).
+- `debug` — per-rule and per-request detail; use this when investigating why a
+  specific rule did or did not match.
+
+Raise `tracing-level` to `debug` only while investigating; lower it back to
+`info` for normal runs.
+
+### Performance overhead
+
+Tracing adds a small amount of work per event (formatting and writing a line).
+At `info` the overhead is negligible. At `debug`, expect noticeably more output
+and a modest increase in run time, especially on large pull requests with many
+rules. Tracing does not change the action's results — it only adds output.
+
+## Further reading
+
+- [`action.yml`](../action.yml) — authoritative input descriptions.
+- [`src/tracing.ts`](../src/tracing.ts) — tracing implementation.

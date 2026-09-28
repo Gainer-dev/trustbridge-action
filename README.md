@@ -711,5 +711,5 @@ Built for the Stellar open-source ecosystem. Horizon data provided by the [Stell
 
 ## Handsoff notes
 
-<!-- handsoff-issue-489 -->
-- #489: Localize SEP-0007 payment links via i18n
+<!-- handsoff-issue-497 -->
+- #497: Add CONTRIBUTING scripts cheat-sheet
