@@ -17,7 +17,7 @@
     "test": "jest",
     "test:coverage": "jest --coverage",
     "test:mock": "jest --testPathPatterns horizon-mock-smoke --forceExit",
-    "lint": "eslint src __tests__ --ext .ts",
+    "lint": "eslint src __tests__",
     "prepare": "npm run build",
     "mock:start": "docker compose -f mock/horizon/docker-compose.yml up -d --wait",
     "mock:stop": "docker compose -f mock/horizon/docker-compose.yml down",

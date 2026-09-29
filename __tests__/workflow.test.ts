@@ -9,9 +9,12 @@ describe('.github/workflows/ci.yml', () => {
     const content = fs.readFileSync(workflowPath, 'utf8');
 
     expect(content).toContain('name: CI');
-    expect(content).toContain('actions/checkout@v4');
+    expect(content).toContain('actions/checkout@');
     expect(content).toContain('action.yml');
     expect(content).toContain('dist/index.js');
+    expect(content).toContain('npm run typecheck');
+    expect(content).toContain('npm test');
+    expect(content).toContain('npm run lint');
   });
 });
 
