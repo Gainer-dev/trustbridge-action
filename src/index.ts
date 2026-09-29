@@ -60,7 +60,8 @@ import {
   resolveMaintainerSkipInput,
 } from "./inputs";
 import { formatFailureSummary } from "./summary";
-import { setValidationOutputs, writeValidationJson } from "./outputs";
+import { setValidationOutputs, writeValidationJson, buildConflictReport, formatConflictReportMarkdown } from "./outputs";
+import type { ConflictReport, ConflictSource } from "./outputs";
 import {
   computeValidationDelta,
   loadPreviousValidationArtifact,
@@ -573,6 +574,46 @@ async function run(): Promise<void> {
     contractResolvedAddress,
     dashboardResolvedAddress,
   );
+
+  // Wire buildConflictReport into multi-source address resolution (#525):
+  // collect every non-empty source in resolution-precedence order
+  // (contract > dashboard_roster > assignee_map > workflow_input) so the
+  // first entry is the winner. A conflict exists when ≥2 sources disagree.
+  const privacyMode = parseBooleanInput(core.getInput('privacy_mode'), false);
+  const addressSources: ConflictSource[] = [];
+  if (contractResolvedAddress) {
+    addressSources.push({ source: 'contract', value: contractResolvedAddress });
+  }
+  if (dashboardResolvedAddress) {
+    addressSources.push({ source: 'dashboard_roster', value: dashboardResolvedAddress });
+  }
+  if (assigneeAddressMapRaw.trim()) {
+    try {
+      const map = parseAssigneeAddressMap(assigneeAddressMapRaw, {
+        workspaceRoot: process.env.GITHUB_WORKSPACE || process.cwd(),
+      });
+      const assigneeLogin = resolveAssigneeLoginFromContext();
+      const mapAddress = resolveAddressFromAssigneeMap(map, assigneeLogin);
+      if (mapAddress) {
+        addressSources.push({ source: 'assignee_map', value: mapAddress });
+      }
+    } catch {
+      // Map parse failures are handled downstream; omit from conflict report.
+    }
+  }
+  if (stellarAddressInput.trim()) {
+    addressSources.push({ source: 'workflow_input', value: stellarAddressInput.trim() });
+  }
+  const conflictReport: ConflictReport = buildConflictReport(
+    { stellar_address: addressSources },
+    { privacyMode },
+  );
+  if (conflictReport.hasConflicts) {
+    logger.warn('Conflicting address sources detected; highest-precedence source won', {
+      component: 'index',
+      conflicts: conflictReport.conflicts,
+    });
+  }
   const failOnMissing = parseBooleanInput(core.getInput('fail_on_missing'), true);
   const issueNumberInputRaw = core.getInput('issue_number') || '';
   const issueNumberInput = issueNumberInputRaw.trim()
@@ -697,8 +738,9 @@ async function run(): Promise<void> {
   );
   const validationJsonPath =
     core.getInput("validation_json_path") || "validation.json";
-  const previousValidationPath = core.getInput("previous_validation_path") || "";
-  const privacyMode = parseBooleanInput(core.getInput("privacy_mode"), false);
+  const previousValidationPath = "";
+  // privacyMode is read earlier (next to address resolution) so the
+  // conflict report can mask values; reused here for downstream consumers.
 
   // External plugins from workspace (allowlisted only)
   const trustbridgePluginsPathRaw =
@@ -1801,11 +1843,13 @@ async function run(): Promise<void> {
       customCommentTemplatePath: customCommentTemplatePath || undefined,
     });
 
-    const bodyBytes = Buffer.byteLength(rawBody, 'utf8');
+    const conflictSection = formatConflictReportMarkdown(conflictReport);
+    const fullBody = conflictSection ? `${rawBody}\n${conflictSection}` : rawBody;
+    const bodyBytes = Buffer.byteLength(fullBody, 'utf8');
     if (bodyBytes > COMMENT_SIZE_LIMIT_BYTES) {
-      return buildTruncatedCommentBody(rawBody, reportOutputPath);
+      return buildTruncatedCommentBody(fullBody, reportOutputPath);
     }
-    return rawBody;
+    return fullBody;
   };
 
   // Build a baseline body (no existing comment) for size-check and full-report write.
@@ -1896,6 +1940,7 @@ async function run(): Promise<void> {
     friendbotCalled,
     friendbotSuccess,
     friendbotTransactionHash,
+    conflictReport,
   });
 
   // ---------------------------------------------------------------------------
