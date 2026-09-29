@@ -697,8 +697,8 @@ async function run(): Promise<void> {
   );
   const validationJsonPath =
     core.getInput("validation_json_path") || "validation.json";
-  const previousValidationPath = "";
-  const privacyMode = false;
+  const previousValidationPath = core.getInput("previous_validation_path") || "";
+  const privacyMode = parseBooleanInput(core.getInput("privacy_mode"), false);
 
   // External plugins from workspace (allowlisted only)
   const trustbridgePluginsPathRaw =
@@ -716,7 +716,7 @@ async function run(): Promise<void> {
   const stellarAddressesRaw = core.getInput("stellar_addresses") || "";
 
   // Full-report artifact path (used when comment exceeds size limit)
-  const reportOutputPath = "trustbridge-report.md";
+  const reportOutputPath = core.getInput("report_output_path") || "trustbridge-report.md";
 
   // Failure snooze window (Issue #155)
   const snoozeWindowMinutes = parseNumberInput(
