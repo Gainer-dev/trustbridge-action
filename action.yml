@@ -922,6 +922,16 @@ outputs:
   friendbot_transaction_hash:
     description: 'Transaction hash from successful Friendbot funding, if called'
 
+  # Batch validation outputs (Issue #522)
+  batch_summary_json:
+    description: 'JSON string of the aggregate batch summary (total, passed, failed, failures)'
+  batch_passed_count:
+    description: 'Number of batch addresses that passed validation (numeric string)'
+  batch_failed_count:
+    description: 'Number of batch addresses that failed validation (numeric string)'
+
 runs:
+  using: "node20"
+  main: "dist/index.js"
   using: "node20"
   main: "dist/index.js"
