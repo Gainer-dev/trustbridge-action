@@ -813,14 +813,6 @@ inputs:
     required: false
     default: 'trustbridge-report.md'
 
-  use_check_runs:
-    description: >-
-      When true, publish the validation result as a GitHub Check Run on the
-      commit instead of (or in addition to) the issue comment. Requires
-      github_token with checks: write. Defaults to false.
-    required: false
-    default: 'false'
-
   privacy_mode:
     description: >-
       When true, redact Stellar addresses and balances from the workflow log
@@ -921,6 +913,10 @@ outputs:
     description: 'Whether Friendbot funding succeeded (true/false)'
   friendbot_transaction_hash:
     description: 'Transaction hash from successful Friendbot funding, if called'
+  check_run_id:
+    description: 'ID of the created GitHub Check Run when use_check_runs is true, empty otherwise'
+  check_run_conclusion:
+    description: 'Conclusion of the created Check Run (success/failure), empty when skipped'
 
   # Merge-resolution conflict report (Issue #524)
   conflict_report:

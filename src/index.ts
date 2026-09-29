@@ -29,7 +29,7 @@ import {
 import type { HorizonAccount, HorizonBalance } from './horizon';
 import { SimpleCache } from './cache';
 import { checkLedgerFreshness } from './freshness';
-import { createCheckRun } from './checks-run';
+import { createCheckRun, determineCheckConclusion } from './checks-run';
 import {
   formatCommentBody,
   postIssueComment,
@@ -1948,16 +1948,26 @@ async function run(): Promise<void> {
   // When use_check_runs is true, creates a Check Run with check annotations.
   // ---------------------------------------------------------------------------
   if (useCheckRuns && result) {
-    try {
-      await createCheckRun(result, githubToken, {
-        stellarAddress: effectiveResolvedAddress,
-      });
-    } catch (checkRunError) {
-      const message =
-        checkRunError instanceof Error
-          ? checkRunError.message
-          : String(checkRunError);
-      core.warning(`Failed to create Check Run (non-fatal): ${message}`);
+    if (!githubToken) {
+      core.info('use_check_runs is true but no github_token was provided — skipping Check Run creation.');
+      core.setOutput('check_run_id', '');
+      core.setOutput('check_run_conclusion', '');
+    } else {
+      try {
+        const checkRun = await createCheckRun(result, githubToken, {
+          stellarAddress: effectiveResolvedAddress,
+        });
+        core.setOutput('check_run_id', checkRun.checkRunId !== undefined ? String(checkRun.checkRunId) : '');
+        core.setOutput('check_run_conclusion', checkRun.success ? determineCheckConclusion(result) : '');
+      } catch (checkRunError) {
+        const message =
+          checkRunError instanceof Error
+            ? checkRunError.message
+            : String(checkRunError);
+        core.warning(`Failed to create Check Run (non-fatal): ${message}`);
+        core.setOutput('check_run_id', '');
+        core.setOutput('check_run_conclusion', '');
+      }
     }
   }
 
