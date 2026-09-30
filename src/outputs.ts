@@ -19,10 +19,18 @@ export interface ActionTimings {
   total_ms?: number;
 }
 
+export interface AssetTrustlineStatus {
+  assetCode: string;
+  assetIssuer: string;
+  trustlineExists: boolean;
+  balance: string;
+}
+
 export interface ActionOutputExtras {
   horizonUrl?: string;
   assetCode?: string;
   assetIssuer?: string;
+  assetsTrustlineStatus?: AssetTrustlineStatus[];
   timings?: ActionTimings;
   validatedAt?: string;
   assigneeLogin?: string;
@@ -210,6 +218,8 @@ export interface ActionOutputs {
   friendbot_called: string;
   friendbot_success: string;
   friendbot_transaction_hash: string;
+  assets_trustline_status: string;
+  trustlines_summary: string;
 }
 
 export function toActionOutputs(
@@ -244,6 +254,18 @@ export function toActionOutputs(
         [extras.assigneeLogin]: result.valid,
       })
     : '{}';
+
+  const assetsTrustlineStatus = (extras.assetsTrustlineStatus ?? []).map(
+    (status) => ({
+      asset_code: status.assetCode,
+      asset_issuer: status.assetIssuer,
+      trustline_exists: status.trustlineExists,
+      balance: status.balance,
+    }),
+  );
+  const presentTrustlines = assetsTrustlineStatus.filter(
+    (status) => status.trustline_exists,
+  ).length;
   
   return {
     trustline_exists: String(result.trustlineExists),
@@ -296,6 +318,8 @@ export function toActionOutputs(
     friendbot_called: String(Boolean(extras.friendbotCalled)),
     friendbot_success: String(Boolean(extras.friendbotSuccess)),
     friendbot_transaction_hash: extras.friendbotTransactionHash ?? '',
+    assets_trustline_status: JSON.stringify(assetsTrustlineStatus),
+    trustlines_summary: `${presentTrustlines} of ${assetsTrustlineStatus.length} additional trustlines present`,
   };
 }
 
